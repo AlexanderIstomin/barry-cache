@@ -1,0 +1,212 @@
+import { appendFile, mkdir } from "node:fs/promises";
+import { basename, join } from "node:path";
+import { listDirs, readTextIfExists, rel, repoPath } from "./fs";
+import { validateFact } from "./validate";
+import type { FactRecord, FeaturePack, RouteMatch } from "./types";
+
+export interface RouteResult {
+  task: string;
+  routes: RouteMatch[];
+}
+
+export interface SearchResult {
+  query: string;
+  results: Array<{
+    type: "fact" | "feature";
+    id: string;
+    route: string;
+    score: number;
+    text: string;
+    source: string;
+  }>;
+}
+
+export async function routeTask({ repo, task }: { repo: string; task: string }): Promise<RouteResult> {
+  const features = await readFeaturePacks(repo);
+  const taskTokens = tokens(task);
+  const routes = features
+    .map((feature) => scoreFeature(feature, taskTokens))
+    .filter((route) => route.score > 0)
+    .sort((a, b) => b.score - a.score || a.slug.localeCompare(b.slug));
+  return { task, routes };
+}
+
+export async function searchContext({ repo, query }: { repo: string; query: string }): Promise<SearchResult> {
+  const features = await readFeaturePacks(repo);
+  const queryTokens = tokens(query);
+  const results: SearchResult["results"] = [];
+
+  for (const feature of features) {
+    const featureText = `${feature.slug} ${feature.readme}`;
+    const featureScore = scoreText(featureText, queryTokens);
+    if (featureScore > 0) {
+      results.push({
+        type: "feature",
+        id: feature.slug,
+        route: feature.slug,
+        score: featureScore,
+        text: firstLine(feature.readme) || feature.slug,
+        source: rel(repo, feature.dir),
+      });
+    }
+    for (const fact of feature.facts) {
+      const factText = factToText(fact);
+      const score = scoreText(factText, queryTokens);
+      if (score > 0) {
+        results.push({
+          type: "fact",
+          id: fact.id,
+          route: feature.slug,
+          score,
+          text: factText,
+          source: `${rel(repo, join(feature.dir, "FACTS.jsonl"))}#${fact.id}`,
+        });
+      }
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  return { query, results };
+}
+
+export async function loadContext({ repo, route }: { repo: string; route: string }): Promise<{
+  feature: FeaturePack | null;
+  facts: FactRecord[];
+  sources: string[];
+}> {
+  const features = await readFeaturePacks(repo);
+  const feature = features.find((item) => item.slug === route) ?? null;
+  if (!feature) return { feature: null, facts: [], sources: [] };
+  return {
+    feature,
+    facts: feature.facts,
+    sources: [
+      rel(repo, join(feature.dir, "README.md")),
+      rel(repo, join(feature.dir, "IDMAP.md")),
+      rel(repo, join(feature.dir, "KG.adj")),
+      rel(repo, join(feature.dir, "FACTS.jsonl")),
+    ],
+  };
+}
+
+export async function resumeProject({ repo, task }: { repo: string; task: string }): Promise<{
+  task: string;
+  context: RouteResult;
+  execution_contract: {
+    task_goal: string;
+    first_action: string;
+    edit_scope: string[];
+    validation_commands: string[];
+    contract_strength: "soft";
+  };
+}> {
+  const context = await routeTask({ repo, task });
+  const selected = context.routes.slice(0, 3).map((route) => route.slug);
+  const firstAction = selected.length > 0
+    ? `load ${selected.join(", ")} context packs`
+    : "load docs/context/INDEX.md and identify the smallest relevant context pack";
+  return {
+    task,
+    context,
+    execution_contract: {
+      task_goal: task,
+      first_action: firstAction,
+      edit_scope: selected.map((slug) => `docs/context/features/${slug}/**`),
+      validation_commands: ["barry-cache validate"],
+      contract_strength: "soft",
+    },
+  };
+}
+
+export async function finalizeProject(options: {
+  repo: string;
+  status: "success" | "partial" | "blocked" | "failed";
+  summary: string;
+  files?: string[];
+  tests?: string[];
+}): Promise<{ saved: boolean; path: string; summary: string }> {
+  const dir = repoPath(options.repo, ".context-state/handoffs");
+  await mkdir(dir, { recursive: true });
+  const path = join(dir, "handoffs.jsonl");
+  const record = {
+    id: `handoff-${new Date().toISOString()}`,
+    updated_at: new Date().toISOString(),
+    status: options.status,
+    summary: options.summary,
+    files: options.files ?? [],
+    tests: options.tests ?? [],
+  };
+  await appendFile(path, `${JSON.stringify(record)}\n`);
+  return { saved: true, path: rel(options.repo, path), summary: options.summary };
+}
+
+export async function readFeaturePacks(repo: string): Promise<FeaturePack[]> {
+  const root = repoPath(repo, "docs/context/features");
+  const slugs = await listDirs(root);
+  const features: FeaturePack[] = [];
+  for (const slug of slugs) {
+    const dir = join(root, slug);
+    features.push({
+      slug,
+      dir,
+      readme: await readTextIfExists(join(dir, "README.md")),
+      idmap: await readTextIfExists(join(dir, "IDMAP.md")),
+      graph: await readTextIfExists(join(dir, "KG.adj")),
+      facts: await readFacts(join(dir, "FACTS.jsonl")),
+    });
+  }
+  return features;
+}
+
+async function readFacts(path: string): Promise<FactRecord[]> {
+  const rows = (await readTextIfExists(path)).split(/\r?\n/);
+  const facts: FactRecord[] = [];
+  for (const row of rows) {
+    if (row.trim().length === 0) continue;
+    const parsed = JSON.parse(row) as unknown;
+    if (validateFact(parsed) === null) facts.push(parsed as FactRecord);
+  }
+  return facts;
+}
+
+function scoreFeature(feature: FeaturePack, taskTokens: string[]): RouteMatch {
+  const text = [
+    feature.slug,
+    basename(feature.dir),
+    feature.readme,
+    feature.idmap,
+    feature.graph,
+    ...feature.facts.map(factToText),
+  ].join(" ");
+  const score = scoreText(text, taskTokens);
+  return {
+    slug: feature.slug,
+    score,
+    reason: score > 0 ? `matched ${score} task token${score === 1 ? "" : "s"}` : "no match",
+  };
+}
+
+function scoreText(text: string, queryTokens: string[]): number {
+  const haystack = text.toLowerCase();
+  return queryTokens.reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0);
+}
+
+function tokens(input: string): string[] {
+  return Array.from(new Set(input.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 3)));
+}
+
+function factToText(fact: FactRecord): string {
+  return [
+    fact.id,
+    fact.subject,
+    fact.predicate,
+    fact.object,
+    fact.status,
+    fact.kind,
+    ...(fact.tags ?? []),
+  ].join(" ");
+}
+
+function firstLine(value: string): string {
+  return value.split(/\r?\n/).find((line) => line.trim().length > 0)?.replace(/^#\s*/, "") ?? "";
+}
