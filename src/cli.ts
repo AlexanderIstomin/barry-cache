@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { finalizeProject, loadContext, resumeProject, routeTask, searchContext } from "./core/context";
+import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
+import { buildReviewModel } from "./core/review-model";
+import { startReviewServer } from "./core/review-server";
 import { validateProject } from "./core/validate";
 
 interface ParsedArgs {
@@ -59,6 +62,40 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         print(await finalizeProject({ repo, status, summary }), json);
         break;
       }
+      case "import": {
+        const source = requiredString(parsed, "source");
+        const from = requiredString(parsed, "from");
+        if (source !== "pulpcut-kb") throw new Error(`Unsupported import source: ${source}`);
+        const result = await importPulpcutKb({
+          repo,
+          from,
+          dryRun: parsed.flags.get("dry-run") === true,
+        });
+        print(result, json, `Imported ${result.imported} PulpCut KB feature pack${result.imported === 1 ? "" : "s"}.`);
+        break;
+      }
+      case "review": {
+        if (json) {
+          print(await buildReviewModel({ repo }), true);
+          break;
+        }
+        const server = await startReviewServer({
+          repo,
+          port: optionalNumber(parsed, "port", 8787),
+          open: parsed.flags.get("open") === true,
+        });
+        console.log(`Barry Cache review running at ${server.url}`);
+        console.log("Press Ctrl+C to stop.");
+        process.once("SIGINT", async () => {
+          await server.close();
+          process.exit(0);
+        });
+        process.once("SIGTERM", async () => {
+          await server.close();
+          process.exit(0);
+        });
+        break;
+      }
       case "doctor": {
         const result = await validateProject({ repo });
         print(result, json, result.ok ? "Barry Cache setup looks healthy." : "Barry Cache setup needs attention.");
@@ -109,6 +146,15 @@ function requiredString(parsed: ParsedArgs, key: string): string {
   return value;
 }
 
+function optionalNumber(parsed: ParsedArgs, key: string, fallback: number): number {
+  const value = parsed.flags.get(key);
+  if (value === undefined) return fallback;
+  if (typeof value !== "string" || value.length === 0) throw new Error(`--${key} requires a number`);
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue < 0 || parsedValue > 65535) throw new Error(`--${key} must be a port number`);
+  return parsedValue;
+}
+
 function print(value: unknown, json: boolean, message?: string): void {
   if (json) {
     console.log(JSON.stringify(value, null, 2));
@@ -132,6 +178,9 @@ Usage:
   barry-cache load --route "..." [--json]
   barry-cache resume --task "..." [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
+  barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]
+  barry-cache review [--port 8787] [--open]
+  barry-cache review --json
 `);
 }
 

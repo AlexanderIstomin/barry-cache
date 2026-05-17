@@ -30,6 +30,10 @@ describe("initProject", () => {
       expect(agents).toContain("Barry Cache");
       expect(agents).toContain("barry-cache resume --task");
 
+      const maintenance = await readFile(join(repo, "docs/context/MAINTENANCE.md"), "utf8");
+      expect(maintenance).toContain("Save an agent session");
+      expect(maintenance).toContain("barry-cache finalize");
+
       const validation = await validateProject({ repo });
       expect(validation.ok).toBe(true);
     });
