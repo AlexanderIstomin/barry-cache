@@ -1,5 +1,9 @@
 # Barry Cache
 
+<p align="center">
+  <img src="assets/barry-cache.png" alt="Barry Cache" width="420">
+</p>
+
 Barry Cache remembers your repo.
 
 It creates source-backed context files for coding agents, validates them, and gives agents a deterministic CLI for loading the smallest useful slice of project knowledge.

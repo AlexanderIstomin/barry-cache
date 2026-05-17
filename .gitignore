@@ -2,3 +2,5 @@ dist/
 node_modules/
 .context-state/
 .context-cache/
+
+barry-cache*.tgz
