@@ -44,7 +44,15 @@ export interface InitResult {
   updated: string[];
   skipped: string[];
   dryRun: boolean;
+  packageManager?: PackageManagerHint;
 }
+
+export interface PackageManagerHint {
+  name: "bun" | "npm" | "pnpm" | "yarn";
+  installCommand: string;
+}
+
+export type AgentInstructionTarget = "codex" | "cursor" | "copilot" | "claude" | "gemini" | "llms";
 
 export interface ValidationResult {
   ok: boolean;

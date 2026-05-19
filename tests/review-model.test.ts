@@ -62,6 +62,12 @@ describe("buildReviewModel", () => {
       expect(model.summary.features).toBe(1);
       expect(model.summary.facts).toBe(2);
       expect(model.summary.handoffs).toBe(1);
+      expect(model.tree.features).toContainEqual(expect.objectContaining({
+        slug: "renderer-runtime",
+        factCount: 2,
+      }));
+      expect(model.tree.factIdsByRoute["renderer-runtime"]).toEqual(["RR001", "RR002"]);
+      expect(model.tree.root.children.some((node) => node.id === "tree:feature:renderer-runtime")).toBe(true);
       expect(model.nodes.find((node) => node.id === "feature:renderer-runtime")?.kind).toBe("feature");
       expect(model.nodes.find((node) => node.id === "fact:RR001")?.meta.route).toBe("renderer-runtime");
       expect(model.nodes.find((node) => node.id === "entity:a0")?.label).toBe("A0");

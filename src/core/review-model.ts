@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { readFeaturePacks } from "./context";
 import { readTextIfExists, rel, repoPath } from "./fs";
+import { buildReviewTree, type ReviewTreeModel } from "./review-tree";
 import type { FactRecord, FeaturePack } from "./types";
 
 export type ReviewNodeKind = "feature" | "fact" | "entity" | "source" | "handoff" | "failure" | "strategy";
@@ -60,6 +61,7 @@ export interface ReviewModel {
   nodes: ReviewNode[];
   edges: ReviewEdge[];
   facts: ReviewFactItem[];
+  tree: ReviewTreeModel;
   timeline: ReviewTimelineItem[];
   warnings: string[];
 }
@@ -136,6 +138,8 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
 
   const nodes = [...graph.nodes.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
   const edges = [...graph.edges.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
+  const sortedFacts = facts.sort((a, b) => a.fact.id.localeCompare(b.fact.id));
+  const tree = buildReviewTree(sortedFacts);
   return {
     generated_at: new Date().toISOString(),
     repo,
@@ -152,7 +156,8 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
     },
     nodes,
     edges,
-    facts: facts.sort((a, b) => a.fact.id.localeCompare(b.fact.id)),
+    facts: sortedFacts,
+    tree,
     timeline,
     warnings,
   };

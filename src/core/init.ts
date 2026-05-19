@@ -2,18 +2,29 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema, agentInstructions } from "./templates";
 import { exists, readText, repoPath, writeIfChanged, writeText } from "./fs";
-import type { InitResult } from "./types";
+import type { AgentInstructionTarget, InitResult, PackageManagerHint } from "./types";
 
 export interface InitOptions {
   repo: string;
   yes?: boolean;
   dryRun?: boolean;
+  agents?: AgentInstructionTarget[];
 }
 
 interface PlannedFile {
   path: string;
   content: string;
 }
+
+const allAgentTargets: AgentInstructionTarget[] = ["codex", "cursor", "copilot", "claude", "gemini", "llms"];
+
+const adapterFiles: Array<{ target: Exclude<AgentInstructionTarget, "codex">; path: string; content: string }> = [
+  { target: "cursor", path: ".cursor/rules/barry-cache.mdc", content: adapterFile("Cursor") },
+  { target: "copilot", path: ".github/copilot-instructions.md", content: adapterFile("GitHub Copilot") },
+  { target: "claude", path: "CLAUDE.md", content: adapterFile("Claude Code") },
+  { target: "gemini", path: "GEMINI.md", content: adapterFile("Gemini") },
+  { target: "llms", path: "llms.txt", content: llmsTxt() },
+];
 
 export async function initProject(options: InitOptions): Promise<InitResult> {
   const repo = options.repo;
@@ -31,11 +42,6 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     { path: "docs/context/schema/work-state.schema.json", content: `${JSON.stringify(workStateSchema, null, 2)}\n` },
     { path: "docs/context/schema/strategy.schema.json", content: `${JSON.stringify(strategySchema, null, 2)}\n` },
     { path: "docs/context/schema/failure.schema.json", content: `${JSON.stringify(failureSchema, null, 2)}\n` },
-    { path: ".cursor/rules/barry-cache.mdc", content: adapterFile("Cursor") },
-    { path: ".github/copilot-instructions.md", content: adapterFile("GitHub Copilot") },
-    { path: "CLAUDE.md", content: adapterFile("Claude Code") },
-    { path: "GEMINI.md", content: adapterFile("Gemini") },
-    { path: "llms.txt", content: llmsTxt() },
   ];
 
   for (const file of files) {
@@ -43,9 +49,10 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     record(result, status, file.path);
   }
 
-  await patchAgents(repo, dryRun, result);
+  await patchAgentInstructions(repo, dryRun, result, options.agents);
   await patchGitignore(repo, dryRun, result);
-  await patchPackageJson(repo, dryRun, result);
+  const packageManager = await patchPackageJson(repo, dryRun, result);
+  if (packageManager) result.packageManager = packageManager;
 
   if (!dryRun) {
     await mkdir(join(repo, ".context-state/work/threads"), { recursive: true });
@@ -65,7 +72,16 @@ function record(result: InitResult, status: "written" | "updated" | "skipped", p
   if (status === "skipped") result.skipped.push(path);
 }
 
-async function patchAgents(repo: string, dryRun: boolean, result: InitResult): Promise<void> {
+async function patchAgentInstructions(repo: string, dryRun: boolean, result: InitResult, agents: AgentInstructionTarget[] | undefined): Promise<void> {
+  const selected = new Set(agents ?? allAgentTargets);
+  if (selected.has("codex")) await patchCodexAgents(repo, dryRun, result);
+  for (const file of adapterFiles) {
+    if (!selected.has(file.target)) continue;
+    record(result, await writeIfChanged(repoPath(repo, file.path), file.content, dryRun), file.path);
+  }
+}
+
+async function patchCodexAgents(repo: string, dryRun: boolean, result: InitResult): Promise<void> {
   const path = repoPath(repo, "AGENTS.md");
   const existing = (await exists(path)) ? await readText(path) : "";
   const content = applyManagedBlock(existing, agentInstructions);
@@ -80,16 +96,16 @@ async function patchGitignore(repo: string, dryRun: boolean, result: InitResult)
   record(result, await writeIfChanged(path, content, dryRun), ".gitignore");
 }
 
-async function patchPackageJson(repo: string, dryRun: boolean, result: InitResult): Promise<void> {
+async function patchPackageJson(repo: string, dryRun: boolean, result: InitResult): Promise<PackageManagerHint | undefined> {
   const path = repoPath(repo, "package.json");
-  if (!(await exists(path))) return;
+  if (!(await exists(path))) return undefined;
 
   const parsed = JSON.parse(await readText(path)) as Record<string, unknown>;
   const scripts = typeof parsed.scripts === "object" && parsed.scripts !== null ? parsed.scripts as Record<string, string> : {};
-  scripts.context ??= "barry-cache";
-  scripts["context:validate"] ??= "barry-cache validate";
-  scripts["context:resume"] ??= "barry-cache resume";
-  scripts["context:finalize"] ??= "barry-cache finalize";
+  scripts.barry ??= "barry-cache";
+  scripts["barry:validate"] ??= "barry-cache validate";
+  scripts["barry:resume"] ??= "barry-cache resume";
+  scripts["barry:finalize"] ??= "barry-cache finalize";
   parsed.scripts = scripts;
 
   const devDependencies = typeof parsed.devDependencies === "object" && parsed.devDependencies !== null ? parsed.devDependencies as Record<string, string> : {};
@@ -97,6 +113,27 @@ async function patchPackageJson(repo: string, dryRun: boolean, result: InitResul
   parsed.devDependencies = devDependencies;
 
   record(result, await writeIfChanged(path, `${JSON.stringify(parsed, null, 2)}\n`, dryRun), "package.json");
+  return await detectPackageManager(repo, parsed);
+}
+
+async function detectPackageManager(repo: string, packageJson: Record<string, unknown>): Promise<PackageManagerHint> {
+  const packageManager = typeof packageJson.packageManager === "string" ? packageJson.packageManager.split("@")[0] : "";
+  if (packageManager === "bun" || packageManager === "pnpm" || packageManager === "yarn" || packageManager === "npm") {
+    return packageManagerHint(packageManager);
+  }
+
+  if (await exists(repoPath(repo, "bun.lock")) || await exists(repoPath(repo, "bun.lockb"))) return packageManagerHint("bun");
+  if (await exists(repoPath(repo, "pnpm-lock.yaml"))) return packageManagerHint("pnpm");
+  if (await exists(repoPath(repo, "yarn.lock"))) return packageManagerHint("yarn");
+  if (await exists(repoPath(repo, "package-lock.json")) || await exists(repoPath(repo, "npm-shrinkwrap.json"))) return packageManagerHint("npm");
+  return packageManagerHint("npm");
+}
+
+function packageManagerHint(name: PackageManagerHint["name"]): PackageManagerHint {
+  return {
+    name,
+    installCommand: `${name} install`,
+  };
 }
 
 function adapterFile(agent: string): string {

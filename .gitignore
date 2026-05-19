@@ -4,3 +4,8 @@ node_modules/
 .context-cache/
 
 barry-cache*.tgz
+
+<!-- barry-cache:start -->
+.context-state/
+.context-cache/
+<!-- barry-cache:end -->

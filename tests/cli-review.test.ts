@@ -49,6 +49,8 @@ describe("review cli", () => {
       const model = JSON.parse(stdout);
       expect(model.summary.features).toBe(1);
       expect(model.nodes.some((node: { id: string }) => node.id === "feature:planner")).toBe(true);
+      expect(model.tree.features.some((feature: { slug: string }) => feature.slug === "planner")).toBe(true);
+      expect(model.tree.factIdsByRoute.planner).toEqual(["PL001"]);
     });
   });
 });

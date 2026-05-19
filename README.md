@@ -8,6 +8,14 @@ Barry Cache remembers your repo.
 
 It creates source-backed context files for coding agents, validates them, and gives agents a deterministic CLI for loading the smallest useful slice of project knowledge.
 
+## Reasoning
+
+Barry Cache exists because coding agents need durable project context that is shared, reviewable, and smaller than the whole repository. Private assistant memory, ad hoc chat history, and vendor-specific instruction files drift apart; Barry keeps the source of truth in the repo and lets every agent load the same facts.
+
+The structure is intentionally layered: canonical context lives in `docs/context/`, operational continuity lives in `.context-state/`, and generated retrieval data lives in `.context-cache/`. Canonical facts stay source-backed and validated, while `route`, `search`, `load`, and `resume` project only the relevant feature pack into an agent session.
+
+That gives Barry three core advantages: it is agent-agnostic, because adapters point to one canonical context; auditable, because facts carry stable IDs and source references; and context-efficient, because agents start from a small routed slice instead of rereading the whole codebase.
+
 ## Quick Start
 
 ```bash
@@ -15,6 +23,12 @@ npx barry-cache init
 ```
 
 This bootstraps Barry Cache in the current repository. It creates `docs/context/`, patches agent instruction files, adds npm scripts when a `package.json` exists, and creates ignored runtime folders for handoffs and caches.
+
+By default, `init` writes instruction files for all supported agents. To keep the repo focused on one agent, pass `--agents`. For example, Codex-only setup writes `AGENTS.md` but skips Copilot, Cursor, Claude, Gemini, and `llms.txt` adapters:
+
+```bash
+npx barry-cache init --agents codex
+```
 
 For non-interactive setup, use:
 
@@ -38,15 +52,17 @@ Creates or updates the Barry Cache project structure.
 barry-cache init
 barry-cache init --yes
 barry-cache init --dry-run
+barry-cache init --agents codex
 ```
 
-It writes the canonical context directory, schemas, generated adapter files for common agents, `llms.txt`, and managed blocks in `AGENTS.md` and `.gitignore`.
+It writes the canonical context directory, schemas, selected agent instruction files, and the managed `.gitignore` block.
 
 Use this when adding Barry Cache to a repo for the first time or regenerating adapter files after an upgrade.
 
 Flags:
 - `--yes`: run with conservative defaults.
 - `--dry-run`: report planned writes and updates without changing files.
+- `--agents <list>`: choose instruction adapters to generate. Use `all` (default), `none`, or a comma-separated list from `codex`, `cursor`, `copilot`, `claude`, `gemini`, and `llms`.
 
 ### `barry-cache validate`
 
@@ -54,7 +70,6 @@ Checks whether the repo context is structurally valid.
 
 ```bash
 barry-cache validate
-barry-cache validate --json
 ```
 
 It verifies required context files exist and validates every fact row in `docs/context/features/*/FACTS.jsonl`.
@@ -67,7 +82,6 @@ Runs the same health check as `validate`, but phrases the result as a setup heal
 
 ```bash
 barry-cache doctor
-barry-cache doctor --json
 ```
 
 Use this when you want to know whether Barry Cache is installed correctly in the repository.
@@ -78,7 +92,6 @@ Scores feature context packs against a task and returns the most relevant routes
 
 ```bash
 barry-cache route --task "fix playback drift"
-barry-cache route --task "fix playback drift" --json
 ```
 
 It reads `docs/context/features/*` and matches the task against feature README text, ID maps, graph edges, and facts.
@@ -91,7 +104,6 @@ Searches feature packs and facts for a query.
 
 ```bash
 barry-cache search --query "transport clock"
-barry-cache search --query "transport clock" --json
 ```
 
 It returns matching feature packs and fact records with route, score, source, and text.
@@ -104,7 +116,6 @@ Loads one feature context pack.
 
 ```bash
 barry-cache load --route renderer-runtime
-barry-cache load --route renderer-runtime --json
 ```
 
 It returns the feature README, facts, and source file list for `docs/context/features/<route>/`.
@@ -117,7 +128,6 @@ Builds an agent startup brief for a task.
 
 ```bash
 barry-cache resume --task "fix playback drift"
-barry-cache resume --task "fix playback drift" --json
 ```
 
 It routes the task, selects the top context packs, and returns an execution contract with the first action, edit scope, and validation commands.
@@ -130,6 +140,9 @@ Records the outcome of a work session.
 
 ```bash
 barry-cache finalize --status success --summary "Updated renderer clock context"
+```
+
+```bash
 barry-cache finalize --status partial --summary "Found root cause but did not patch"
 ```
 
@@ -154,9 +167,9 @@ barry-cache review --open
 barry-cache review --json
 ```
 
-Browser mode serves an interactive graph, fact table, timeline, and inspector at `http://127.0.0.1:8787` by default.
+Browser mode serves a feature-first relational tree explorer and inspector at `http://127.0.0.1:8787` by default. The tree supports feature selection, grouping, related-fact activation, local expansion, and zoom/pan for larger memory sets.
 
-JSON mode exports the same graph/list/timeline model without starting a long-running server.
+JSON mode exports the same graph/list/timeline/tree model without starting a long-running server.
 
 Use this when you want to audit what Barry Cache currently knows.
 
@@ -166,6 +179,9 @@ Imports memory from another system.
 
 ```bash
 barry-cache import --source pulpcut-kb --from /path/to/pulpcut-frontend
+```
+
+```bash
 barry-cache import --source pulpcut-kb --from /path/to/pulpcut-frontend --dry-run --json
 ```
 
@@ -211,6 +227,12 @@ npx barry-cache init
 ```
 
 After this, Barry Cache writes short instructions into agent-facing files such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursor/rules/barry-cache.mdc`, and `.github/copilot-instructions.md`.
+
+For a Codex-only repo, use:
+
+```bash
+npx barry-cache init --agents codex
+```
 
 Those generated files tell coding agents how to use Barry before they edit the repo.
 
