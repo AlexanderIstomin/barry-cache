@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { adrMatchesSource, looksLikeAdrSource, readAdrCatalog } from "./adr";
 import { listDirs, rel, repoPath, readTextIfExists, exists } from "./fs";
 import type { CommandIssue, FactRecord, ValidationResult } from "./types";
 
@@ -12,6 +13,8 @@ const requiredFiles = [
 export async function validateProject({ repo }: { repo: string }): Promise<ValidationResult> {
   const errors: CommandIssue[] = [];
   const warnings: CommandIssue[] = [];
+  const adrCatalog = await readAdrCatalog(repo);
+  errors.push(...adrCatalog.errors);
 
   for (const file of requiredFiles) {
     if (!(await exists(repoPath(repo, file)))) {
@@ -35,6 +38,14 @@ export async function validateProject({ repo }: { repo: string }): Promise<Valid
         const value = JSON.parse(row) as unknown;
         const message = validateFact(value);
         if (message) errors.push({ file: rel(repo, factsPath), line, message });
+        if (!message) {
+          const fact = value as FactRecord;
+          for (const source of fact.src) {
+            if (looksLikeAdrSource(source) && !adrCatalog.adrs.some((adr) => adrMatchesSource(adr, source))) {
+              warnings.push({ file: rel(repo, factsPath), line, message: `fact references missing ADR source: ${source}` });
+            }
+          }
+        }
       } catch {
         errors.push({ file: rel(repo, factsPath), line, message: "invalid JSON" });
       }

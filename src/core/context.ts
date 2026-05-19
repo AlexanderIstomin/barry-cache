@@ -1,5 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { adrToText, linkedAdrsForSources, listAdrs, type AdrRecord } from "./adr";
 import { listDirs, readTextIfExists, rel, repoPath } from "./fs";
 import { validateFact } from "./validate";
 import type { FactRecord, FeaturePack, RouteMatch } from "./types";
@@ -12,7 +13,7 @@ export interface RouteResult {
 export interface SearchResult {
   query: string;
   results: Array<{
-    type: "fact" | "feature";
+    type: "fact" | "feature" | "adr";
     id: string;
     route: string;
     score: number;
@@ -23,9 +24,10 @@ export interface SearchResult {
 
 export async function routeTask({ repo, task }: { repo: string; task: string }): Promise<RouteResult> {
   const features = await readFeaturePacks(repo);
+  const adrs = await listAdrs({ repo });
   const taskTokens = tokens(task);
   const routes = features
-    .map((feature) => scoreFeature(feature, taskTokens))
+    .map((feature) => scoreFeature(feature, taskTokens, adrs))
     .filter((route) => route.score > 0)
     .sort((a, b) => b.score - a.score || a.slug.localeCompare(b.slug));
   return { task, routes };
@@ -33,6 +35,7 @@ export async function routeTask({ repo, task }: { repo: string; task: string }):
 
 export async function searchContext({ repo, query }: { repo: string; query: string }): Promise<SearchResult> {
   const features = await readFeaturePacks(repo);
+  const adrs = await listAdrs({ repo });
   const queryTokens = tokens(query);
   const results: SearchResult["results"] = [];
 
@@ -65,6 +68,20 @@ export async function searchContext({ repo, query }: { repo: string; query: stri
     }
   }
 
+  for (const adr of adrs) {
+    const score = scoreText(adrToText(adr), queryTokens);
+    if (score > 0) {
+      results.push({
+        type: "adr",
+        id: adr.id,
+        route: "adrs",
+        score,
+        text: adr.title,
+        source: adr.path,
+      });
+    }
+  }
+
   results.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   return { query, results };
 }
@@ -73,10 +90,12 @@ export async function loadContext({ repo, route }: { repo: string; route: string
   feature: FeaturePack | null;
   facts: FactRecord[];
   sources: string[];
+  adrs: AdrRecord[];
 }> {
   const features = await readFeaturePacks(repo);
+  const adrs = await listAdrs({ repo });
   const feature = features.find((item) => item.slug === route) ?? null;
-  if (!feature) return { feature: null, facts: [], sources: [] };
+  if (!feature) return { feature: null, facts: [], sources: [], adrs: [] };
   return {
     feature,
     facts: feature.facts,
@@ -86,6 +105,7 @@ export async function loadContext({ repo, route }: { repo: string; route: string
       rel(repo, join(feature.dir, "KG.adj")),
       rel(repo, join(feature.dir, "FACTS.jsonl")),
     ],
+    adrs: linkedAdrsForSources(feature.facts.flatMap((fact) => fact.src), adrs),
   };
 }
 
@@ -169,7 +189,8 @@ async function readFacts(path: string): Promise<FactRecord[]> {
   return facts;
 }
 
-function scoreFeature(feature: FeaturePack, taskTokens: string[]): RouteMatch {
+function scoreFeature(feature: FeaturePack, taskTokens: string[], adrs: AdrRecord[]): RouteMatch {
+  const linkedAdrs = linkedAdrsForSources(feature.facts.flatMap((fact) => fact.src), adrs);
   const text = [
     feature.slug,
     basename(feature.dir),
@@ -177,6 +198,7 @@ function scoreFeature(feature: FeaturePack, taskTokens: string[]): RouteMatch {
     feature.idmap,
     feature.graph,
     ...feature.facts.map(factToText),
+    ...linkedAdrs.map(adrToText),
   ].join(" ");
   const score = scoreText(text, taskTokens);
   return {
@@ -203,6 +225,7 @@ function factToText(fact: FactRecord): string {
     fact.object,
     fact.status,
     fact.kind,
+    ...fact.src,
     ...(fact.tags ?? []),
   ].join(" ");
 }

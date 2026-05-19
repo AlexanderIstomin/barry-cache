@@ -17,37 +17,44 @@ export function applyManagedBlock(existing: string, body: string): string {
   return `${prefix}${nextBlock}`;
 }
 
-export const agentInstructions = `
+export function agentInstructions(commandPrefix = "barry-cache", installCommand?: string): string {
+  const commandNote = installCommand
+    ? `Use the repo package script so Barry Cache runs from the local npm dependency without relying on shell PATH. If the dependency is missing, run \`${installCommand}\` first. Use \`npx barry-cache <command>\` only when package scripts are unavailable.`
+    : "Use `barry-cache` directly. If it is unavailable, run it through your package runner, for example `npx barry-cache <command>`.";
+  return `
 ## Barry Cache
 
 Barry Cache remembers this repo through source-backed context files.
 
+${commandNote}
+
 Start task context with:
 
 \`\`\`bash
-barry-cache resume --task "<task>"
+${commandPrefix} resume --task "<task>"
 \`\`\`
 
 Use focused retrieval during work:
 
 \`\`\`bash
-barry-cache route --task "<task>"
-barry-cache search --query "<query>"
-barry-cache load --route "<route>"
+${commandPrefix} route --task "<task>"
+${commandPrefix} search --query "<query>"
+${commandPrefix} load --route "<route>"
 \`\`\`
 
 When context files change, run:
 
 \`\`\`bash
-barry-cache validate
+${commandPrefix} validate
 \`\`\`
 
 Before handing off substantial work, record factual evidence:
 
 \`\`\`bash
-barry-cache finalize --status success --summary "<summary>"
+${commandPrefix} finalize --status success --summary "<summary>"
 \`\`\`
 `;
+}
 
 export const indexMd = `# Context Index
 
@@ -63,6 +70,10 @@ barry-cache validate
 ## Routes
 
 Feature context packs live in \`docs/context/features/*\`.
+
+## Decisions
+
+Architecture decision records live in \`docs/context/adrs/*\`.
 `;
 
 export const logMd = `# Context Log
@@ -74,7 +85,8 @@ export const maintenanceMd = `# Context Maintenance
 
 - Keep project truth in Git.
 - Add source-backed facts to feature \`FACTS.jsonl\` files.
-- Use ADRs for decisions that change architecture.
+- Use \`barry-cache adr new --title "<decision>"\` for decisions that change architecture.
+- Reference ADR files from decision facts through the fact \`src\` array.
 - Treat \`.context-state/\` as operational memory, not canonical truth.
 - Run \`barry-cache validate\` after context changes.
 
@@ -111,6 +123,20 @@ This directory is the canonical project memory for Barry Cache. It keeps durable
 Barry separates three concerns: \`docs/context/\` is reviewed truth, \`.context-state/\` is operational session continuity, and \`.context-cache/\` is disposable retrieval data. Use this structure to explain existing behavior, route tasks, validate facts, and resume agent work without loading the whole repo.
 `;
 
+export const adrReadmeMd = `# Architecture Decision Records
+
+ADRs explain why durable architectural decisions exist. Keep them short, source-backed, and linked from feature facts when a decision affects implementation behavior.
+
+Use:
+
+\`\`\`bash
+barry-cache adr new --title "<decision>"
+barry-cache adr list
+\`\`\`
+
+Facts can reference ADRs with \`src: ["docs/context/adrs/ADR-0001-example.md"]\`. Barry can then route, search, load, and review the decision together with the facts it supports.
+`;
+
 export const conceptOverviewMd = `# Project Context Model
 
 Barry Cache separates canonical context, operational state, and generated caches.
@@ -135,6 +161,21 @@ export const factSchema = {
     "kind": { "enum": ["implemented", "decision", "constraint", "test", "risk", "open-question"] },
     "updated_at": { "type": "string" },
     "confidence": { "enum": ["low", "medium", "high"] },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  }
+};
+
+export const adrSchema = {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Barry Cache ADR frontmatter",
+  "type": "object",
+  "required": ["id", "title", "status", "date"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^ADR-[0-9]{4}$" },
+    "title": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["active", "superseded", "deprecated"] },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "supersedes": { "type": "array", "items": { "type": "string" } },
     "tags": { "type": "array", "items": { "type": "string" } }
   }
 };

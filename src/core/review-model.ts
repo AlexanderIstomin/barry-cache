@@ -1,10 +1,11 @@
 import { join } from "node:path";
+import { adrMatchesSource, listAdrs, type AdrRecord } from "./adr";
 import { readFeaturePacks } from "./context";
 import { readTextIfExists, rel, repoPath } from "./fs";
 import { buildReviewTree, type ReviewTreeModel } from "./review-tree";
 import type { FactRecord, FeaturePack } from "./types";
 
-export type ReviewNodeKind = "feature" | "fact" | "entity" | "source" | "handoff" | "failure" | "strategy";
+export type ReviewNodeKind = "feature" | "fact" | "entity" | "source" | "adr" | "handoff" | "failure" | "strategy";
 export type ReviewEdgeKind = "contains" | "asserts" | "cites" | "supersedes" | "touches" | "related-to";
 export type ReviewTimelineKind = "handoff" | "failure" | "strategy";
 
@@ -50,6 +51,7 @@ export interface ReviewModel {
   summary: {
     features: number;
     facts: number;
+    adrs: number;
     entities: number;
     sources: number;
     handoffs: number;
@@ -89,6 +91,9 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
   const facts: ReviewFactItem[] = [];
   const timeline: ReviewTimelineItem[] = [];
   const features = await readFeaturePacks(repo);
+  const adrs = await listAdrs({ repo });
+
+  for (const adr of adrs) addAdr(graph, adr);
 
   for (const feature of features) {
     addFeature(graph, repo, feature);
@@ -101,7 +106,7 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
         source: `${rel(repo, join(feature.dir, "FACTS.jsonl"))}#${fact.id}`,
         fact,
       });
-      addFact(graph, repo, feature, fact, sourceMap);
+      addFact(graph, repo, feature, fact, sourceMap, adrs);
     }
   }
 
@@ -146,6 +151,7 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
     summary: {
       features: features.length,
       facts: facts.length,
+      adrs: adrs.length,
       entities: nodes.filter((node) => node.kind === "entity").length,
       sources: nodes.filter((node) => node.kind === "source").length,
       handoffs: timeline.filter((item) => item.kind === "handoff").length,
@@ -183,6 +189,7 @@ function addFact(
   feature: FeaturePack,
   fact: FactRecord,
   sourceMap: Map<string, string>,
+  adrs: AdrRecord[],
 ): void {
   const factId = `fact:${fact.id}`;
   addNode(graph, {
@@ -226,7 +233,8 @@ function addFact(
 
   for (const source of fact.src) {
     const resolved = sourceMap.get(source) ?? source;
-    const sourceId = addSource(graph, resolved, { alias: resolved === source ? undefined : source });
+    const adr = adrs.find((item) => adrMatchesSource(item, resolved) || adrMatchesSource(item, source));
+    const sourceId = adr ? `adr:${adr.id}` : addSource(graph, resolved, { alias: resolved === source ? undefined : source });
     addEdge(graph, {
       source: factId,
       target: sourceId,
@@ -240,6 +248,32 @@ function addFact(
     addEdge(graph, {
       source: factId,
       target: `fact:${superseded}`,
+      kind: "supersedes",
+      meta: {},
+    });
+  }
+}
+
+function addAdr(graph: MutableGraph, adr: AdrRecord): void {
+  const nodeId = `adr:${adr.id}`;
+  addNode(graph, {
+    id: nodeId,
+    kind: "adr",
+    label: adr.id,
+    subtitle: adr.title,
+    source: adr.path,
+    meta: {
+      status: adr.status,
+      date: adr.date,
+      supersedes: adr.supersedes,
+      tags: adr.tags,
+    },
+  });
+
+  for (const superseded of adr.supersedes) {
+    addEdge(graph, {
+      source: nodeId,
+      target: `adr:${superseded}`,
       kind: "supersedes",
       meta: {},
     });

@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema, agentInstructions } from "./templates";
+import { adrReadmeMd, adrSchema, applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema, agentInstructions } from "./templates";
 import { exists, readText, repoPath, writeIfChanged, writeText } from "./fs";
 import type { AgentInstructionTarget, InitResult, PackageManagerHint } from "./types";
 
@@ -18,12 +18,12 @@ interface PlannedFile {
 
 const allAgentTargets: AgentInstructionTarget[] = ["codex", "cursor", "copilot", "claude", "gemini", "llms"];
 
-const adapterFiles: Array<{ target: Exclude<AgentInstructionTarget, "codex">; path: string; content: string }> = [
-  { target: "cursor", path: ".cursor/rules/barry-cache.mdc", content: adapterFile("Cursor") },
-  { target: "copilot", path: ".github/copilot-instructions.md", content: adapterFile("GitHub Copilot") },
-  { target: "claude", path: "CLAUDE.md", content: adapterFile("Claude Code") },
-  { target: "gemini", path: "GEMINI.md", content: adapterFile("Gemini") },
-  { target: "llms", path: "llms.txt", content: llmsTxt() },
+const adapterFiles: Array<{ target: Exclude<AgentInstructionTarget, "codex">; path: string; agent: string }> = [
+  { target: "cursor", path: ".cursor/rules/barry-cache.mdc", agent: "Cursor" },
+  { target: "copilot", path: ".github/copilot-instructions.md", agent: "GitHub Copilot" },
+  { target: "claude", path: "CLAUDE.md", agent: "Claude Code" },
+  { target: "gemini", path: "GEMINI.md", agent: "Gemini" },
+  { target: "llms", path: "llms.txt", agent: "LLM" },
 ];
 
 export async function initProject(options: InitOptions): Promise<InitResult> {
@@ -36,7 +36,9 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     { path: "docs/context/INDEX.md", content: indexMd },
     { path: "docs/context/LOG.md", content: logMd },
     { path: "docs/context/MAINTENANCE.md", content: maintenanceMd },
+    { path: "docs/context/adrs/README.md", content: adrReadmeMd },
     { path: "docs/context/concepts/project-context-model.md", content: conceptOverviewMd },
+    { path: "docs/context/schema/adr.schema.json", content: `${JSON.stringify(adrSchema, null, 2)}\n` },
     { path: "docs/context/schema/fact.schema.json", content: `${JSON.stringify(factSchema, null, 2)}\n` },
     { path: "docs/context/schema/route.schema.json", content: `${JSON.stringify(routeSchema, null, 2)}\n` },
     { path: "docs/context/schema/work-state.schema.json", content: `${JSON.stringify(workStateSchema, null, 2)}\n` },
@@ -49,10 +51,12 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     record(result, status, file.path);
   }
 
-  await patchAgentInstructions(repo, dryRun, result, options.agents);
-  await patchGitignore(repo, dryRun, result);
   const packageManager = await patchPackageJson(repo, dryRun, result);
   if (packageManager) result.packageManager = packageManager;
+  const commandPrefix = barryCommandPrefix(packageManager);
+
+  await patchAgentInstructions(repo, dryRun, result, options.agents, commandPrefix, packageManager);
+  await patchGitignore(repo, dryRun, result);
 
   if (!dryRun) {
     await mkdir(join(repo, ".context-state/work/threads"), { recursive: true });
@@ -72,19 +76,33 @@ function record(result: InitResult, status: "written" | "updated" | "skipped", p
   if (status === "skipped") result.skipped.push(path);
 }
 
-async function patchAgentInstructions(repo: string, dryRun: boolean, result: InitResult, agents: AgentInstructionTarget[] | undefined): Promise<void> {
+async function patchAgentInstructions(
+  repo: string,
+  dryRun: boolean,
+  result: InitResult,
+  agents: AgentInstructionTarget[] | undefined,
+  commandPrefix: string,
+  packageManager: PackageManagerHint | undefined,
+): Promise<void> {
   const selected = new Set(agents ?? allAgentTargets);
-  if (selected.has("codex")) await patchCodexAgents(repo, dryRun, result);
+  if (selected.has("codex")) await patchCodexAgents(repo, dryRun, result, commandPrefix, packageManager);
   for (const file of adapterFiles) {
     if (!selected.has(file.target)) continue;
-    record(result, await writeIfChanged(repoPath(repo, file.path), file.content, dryRun), file.path);
+    const content = file.target === "llms" ? llmsTxt() : adapterFile(file.agent, commandPrefix);
+    record(result, await writeIfChanged(repoPath(repo, file.path), content, dryRun), file.path);
   }
 }
 
-async function patchCodexAgents(repo: string, dryRun: boolean, result: InitResult): Promise<void> {
+async function patchCodexAgents(
+  repo: string,
+  dryRun: boolean,
+  result: InitResult,
+  commandPrefix: string,
+  packageManager: PackageManagerHint | undefined,
+): Promise<void> {
   const path = repoPath(repo, "AGENTS.md");
   const existing = (await exists(path)) ? await readText(path) : "";
-  const content = applyManagedBlock(existing, agentInstructions);
+  const content = applyManagedBlock(existing, agentInstructions(commandPrefix, packageManager?.installCommand));
   record(result, await writeIfChanged(path, content, dryRun), "AGENTS.md");
 }
 
@@ -136,7 +154,11 @@ function packageManagerHint(name: PackageManagerHint["name"]): PackageManagerHin
   };
 }
 
-function adapterFile(agent: string): string {
+function barryCommandPrefix(packageManager: PackageManagerHint | undefined): string {
+  return packageManager ? `${packageManager.name} run barry --` : "barry-cache";
+}
+
+function adapterFile(agent: string, commandPrefix: string): string {
   return `# Barry Cache for ${agent}
 
 Canonical context lives in \`docs/context/\`.
@@ -144,13 +166,13 @@ Canonical context lives in \`docs/context/\`.
 Start by running:
 
 \`\`\`bash
-barry-cache resume --task "<task>"
+${commandPrefix} resume --task "<task>"
 \`\`\`
 
 Validate context changes with:
 
 \`\`\`bash
-barry-cache validate
+${commandPrefix} validate
 \`\`\`
 `;
 }

@@ -22,7 +22,9 @@ describe("initProject", () => {
       expect(first.packageManager?.installCommand).toBe("bun install");
       expect(second.changed).toBe(false);
       await expect(stat(join(repo, "docs/context/INDEX.md"))).resolves.toBeTruthy();
+      await expect(stat(join(repo, "docs/context/adrs/README.md"))).resolves.toBeTruthy();
       await expect(stat(join(repo, "docs/context/schema/fact.schema.json"))).resolves.toBeTruthy();
+      await expect(stat(join(repo, "docs/context/schema/adr.schema.json"))).resolves.toBeTruthy();
       await expect(stat(join(repo, ".cursor/rules/barry-cache.mdc"))).resolves.toBeTruthy();
 
       const packageJson = JSON.parse(await readFile(join(repo, "package.json"), "utf8"));
@@ -35,7 +37,13 @@ describe("initProject", () => {
 
       const agents = await readFile(join(repo, "AGENTS.md"), "utf8");
       expect(agents).toContain("Barry Cache");
-      expect(agents).toContain("barry-cache resume --task");
+      expect(agents).toContain("bun run barry -- resume --task");
+      expect(agents).toContain("bun run barry -- validate");
+      expect(agents).toContain("run `bun install` first");
+      expect(agents).not.toContain("barry-cache resume --task");
+
+      const cursor = await readFile(join(repo, ".cursor/rules/barry-cache.mdc"), "utf8");
+      expect(cursor).toContain("bun run barry -- resume --task");
 
       const maintenance = await readFile(join(repo, "docs/context/MAINTENANCE.md"), "utf8");
       expect(maintenance).toContain("Save an agent session");
@@ -72,6 +80,23 @@ describe("initProject", () => {
       await expect(stat(join(repo, "CLAUDE.md"))).rejects.toThrow();
       await expect(stat(join(repo, "GEMINI.md"))).rejects.toThrow();
       await expect(stat(join(repo, "llms.txt"))).rejects.toThrow();
+    });
+  });
+
+  test("uses the package manager field in generated agent instructions", async () => {
+    await withTempRepo(async (repo) => {
+      await writeFile(
+        join(repo, "package.json"),
+        JSON.stringify({ name: "fixture", packageManager: "pnpm@10.0.0" }, null, 2),
+      );
+
+      await initProject({ repo, yes: true, agents: ["codex"] });
+
+      const agents = await readFile(join(repo, "AGENTS.md"), "utf8");
+      expect(agents).toContain("pnpm run barry -- resume --task");
+      expect(agents).toContain("pnpm run barry -- validate");
+      expect(agents).toContain("run `pnpm install` first");
+      expect(agents).not.toContain("barry-cache resume --task");
     });
   });
 });

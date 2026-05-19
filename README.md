@@ -1,7 +1,7 @@
 # Barry Cache
 
 <p align="center">
-  <img src="assets/barry-cache.png" alt="Barry Cache" width="420">
+  <img src="https://raw.githubusercontent.com/AlexanderIstomin/barry-cache/main/assets/barry-cache.png" alt="Barry Cache" width="420">
 </p>
 
 Barry Cache remembers your repo.
@@ -72,7 +72,7 @@ Checks whether the repo context is structurally valid.
 barry-cache validate
 ```
 
-It verifies required context files exist and validates every fact row in `docs/context/features/*/FACTS.jsonl`.
+It verifies required context files, ADR frontmatter, and every fact row in `docs/context/features/*/FACTS.jsonl`.
 
 Use this after editing context files, importing memory, or before committing Barry Cache changes.
 
@@ -100,13 +100,13 @@ Use this when deciding which context pack an agent should load before doing work
 
 ### `barry-cache search`
 
-Searches feature packs and facts for a query.
+Searches feature packs, facts, and ADRs for a query.
 
 ```bash
 barry-cache search --query "transport clock"
 ```
 
-It returns matching feature packs and fact records with route, score, source, and text.
+It returns matching feature packs, fact records, and ADR records with route, score, source, and text.
 
 Use this when you know a term, file, component, or concept and want to find the relevant memory.
 
@@ -118,7 +118,7 @@ Loads one feature context pack.
 barry-cache load --route renderer-runtime
 ```
 
-It returns the feature README, facts, and source file list for `docs/context/features/<route>/`.
+It returns the feature README, facts, linked ADRs, and source file list for `docs/context/features/<route>/`.
 
 Use this after `route` or `search` selects a specific feature.
 
@@ -155,6 +155,33 @@ Statuses:
 - `partial`: some useful progress was made.
 - `blocked`: the task cannot proceed without external input.
 - `failed`: the attempted approach did not work.
+
+### `barry-cache adr`
+
+Creates and lists architecture decision records.
+
+```bash
+barry-cache adr new --title "Use repo-native context"
+barry-cache adr new --title "Keep generated indexes disposable" --tags context,cache
+barry-cache adr list
+```
+
+ADRs live in `docs/context/adrs/` as Markdown files with frontmatter. Use them for durable architectural decisions, then reference the ADR file from decision facts with `src`.
+
+```json
+{
+  "id": "CTX001",
+  "subject": "Barry",
+  "predicate": "stores canonical context in",
+  "object": "docs/context/",
+  "src": ["docs/context/adrs/ADR-0001-use-repo-native-context.md"],
+  "status": "active",
+  "kind": "decision",
+  "updated_at": "2026-05-19"
+}
+```
+
+Barry can then search the ADR, route tasks through feature facts linked to it, load it with the relevant feature pack, and show it in review data.
 
 ### `barry-cache review`
 
@@ -228,6 +255,12 @@ npx barry-cache init
 
 After this, Barry Cache writes short instructions into agent-facing files such as `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.cursor/rules/barry-cache.mdc`, and `.github/copilot-instructions.md`.
 
+When a package manager is detected, those instructions use the repo package script instead of assuming `barry-cache` is on `PATH`. For a Bun repo, agents are told to run commands like:
+
+```bash
+bun run barry -- resume --task "fix playback drift in the editor"
+```
+
 For a Codex-only repo, use:
 
 ```bash
@@ -238,7 +271,7 @@ Those generated files tell coding agents how to use Barry before they edit the r
 
 ### Ask An Agent To Work On A Task
 
-Usually, you do not need to run `barry-cache resume` yourself.
+Usually, you do not need to run Barry yourself.
 
 Ask your coding agent normally:
 
@@ -249,13 +282,15 @@ Fix playback drift in the editor.
 Because `barry-cache init` added instructions to the repo, the agent should run this before non-trivial work:
 
 ```bash
-barry-cache resume --task "fix playback drift in the editor"
+bun run barry -- resume --task "fix playback drift in the editor"
 ```
+
+The generated instruction file uses the package manager Barry detected for that repo, for example `bun`, `npm`, `pnpm`, or `yarn`.
 
 The agent then uses the returned routes to load focused context:
 
 ```bash
-barry-cache load --route editor-media-runtime
+bun run barry -- load --route editor-media-runtime
 ```
 
 This keeps the agent from reading every context file in the repo.
@@ -264,7 +299,7 @@ If an agent ignores the repo instructions, prompt it explicitly:
 
 ```text
 Before editing, follow Barry Cache protocol:
-1. Run barry-cache resume --task "<my task>".
+1. Run the repo's Barry package script, for example bun run barry -- resume --task "<my task>".
 2. Load the returned route context.
 3. Do the work.
 4. Run validation.
@@ -286,6 +321,16 @@ Use the browser review tool for a broader overview:
 ```bash
 barry-cache review
 ```
+
+### Record An Architectural Decision
+
+Create an ADR when a decision explains why future agents should preserve or intentionally change architecture:
+
+```bash
+barry-cache adr new --title "Use repo-native context" --tags context,agents
+```
+
+Then add or update a `kind: "decision"` fact in the relevant feature pack and point `src` to the ADR file. That keeps the human-readable reasoning and the machine-routable fact connected.
 
 ### Save Agent Sessions
 

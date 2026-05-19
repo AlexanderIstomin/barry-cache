@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
 import { finalizeProject, loadContext, resumeProject, routeTask, searchContext } from "./core/context";
 import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
@@ -9,6 +10,7 @@ import { validateProject } from "./core/validate";
 
 interface ParsedArgs {
   command: string;
+  positionals: string[];
   flags: Map<string, string | boolean>;
 }
 
@@ -87,6 +89,10 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         print(await finalizeProject({ repo, status, summary }), json);
         break;
       }
+      case "adr": {
+        await handleAdrCommand(parsed, repo, json);
+        break;
+      }
       case "import": {
         const source = requiredString(parsed, "source", commandUsage("import"), { source: [...importSources] });
         const from = requiredString(parsed, "from", commandUsage("import"), { source: [...importSources] });
@@ -159,9 +165,13 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 function parseArgs(argv: string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
   const flags = new Map<string, string | boolean>();
+  const positionals: string[] = [];
   for (let index = 0; index < rest.length; index++) {
     const arg = rest[index];
-    if (!arg?.startsWith("--")) continue;
+    if (!arg?.startsWith("--")) {
+      if (arg) positionals.push(arg);
+      continue;
+    }
     const key = arg.slice(2);
     const next = rest[index + 1];
     if (next && !next.startsWith("--")) {
@@ -171,7 +181,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       flags.set(key, true);
     }
   }
-  return { command, flags };
+  return { command, positionals, flags };
 }
 
 function requiredString(parsed: ParsedArgs, key: string, usageValue?: string, options?: Record<string, string[]>): string {
@@ -201,6 +211,13 @@ function optionalChoice<const T extends readonly string[]>(parsed: ParsedArgs, k
     });
   }
   return value as T[number];
+}
+
+function optionalList(parsed: ParsedArgs, key: string, usageValue?: string): string[] {
+  const value = parsed.flags.get(key);
+  if (value === undefined) return [];
+  if (typeof value !== "string") throw new CliArgumentError(`--${key} requires a comma-separated value`, { usage: usageValue });
+  return value.split(",").map((item: string) => item.trim()).filter(Boolean);
 }
 
 function parseAgentTargets(value: string | boolean | undefined): AgentInstructionTarget[] | undefined {
@@ -238,6 +255,38 @@ function print(value: unknown, json: boolean, message?: string): void {
     return;
   }
   console.log(JSON.stringify(value, null, 2));
+}
+
+async function handleAdrCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === "new") {
+    const title = requiredString(parsed, "title", commandUsage("adr new"));
+    const status = optionalChoice(parsed, "status", adrStatuses, "active", commandUsage("adr new")) as AdrStatus;
+    const adr = await createAdr({
+      repo,
+      title,
+      status,
+      supersedes: optionalList(parsed, "supersedes", commandUsage("adr new")),
+      tags: optionalList(parsed, "tags", commandUsage("adr new")),
+    });
+    print(adr, json, `Created ${adr.id} at ${adr.path}.`);
+    return;
+  }
+
+  if (action === "list") {
+    const adrs = await listAdrs({ repo });
+    print({ adrs }, json, formatAdrList(adrs));
+    return;
+  }
+
+  throw new CliArgumentError(action ? `Unknown ADR action: ${action}` : "Missing ADR action", {
+    usage: commandUsage("adr"),
+  });
+}
+
+function formatAdrList(adrs: Awaited<ReturnType<typeof listAdrs>>): string {
+  if (adrs.length === 0) return "No ADRs found.";
+  return adrs.map((adr) => `${adr.id}  ${adr.status}  ${adr.title} (${adr.path})`).join("\n");
 }
 
 function formatInitMessage(result: InitResult): string {
@@ -303,6 +352,9 @@ function errorMessage(error: unknown): string {
 function commandUsage(command: string): string | undefined {
   const usages: Record<string, string> = {
     init: "barry-cache init [--yes] [--dry-run] [--agents all|none|codex,cursor,copilot,claude,gemini,llms]",
+    adr: "barry-cache adr <new|list> [--json]",
+    "adr new": 'barry-cache adr new --title "..." [--status active|superseded|deprecated] [--supersedes ADR-0001] [--tags context,agents] [--json]',
+    "adr list": "barry-cache adr list [--json]",
     route: 'barry-cache route --task "..." [--json]',
     search: 'barry-cache search --query "..." [--json]',
     load: 'barry-cache load --route "..." [--json]',
@@ -329,6 +381,8 @@ Usage:
   barry-cache load --route "..." [--json]
   barry-cache resume --task "..." [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
+  barry-cache adr new --title "..." [--status active] [--tags context,agents]
+  barry-cache adr list [--json]
   barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]
   barry-cache review [--port 8787] [--open]
   barry-cache review --json
