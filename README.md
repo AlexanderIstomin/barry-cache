@@ -1,7 +1,7 @@
 # Barry Cache
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/AlexanderIstomin/barry-cache/main/assets/barry-cache.png" alt="Barry Cache" width="420">
+  <img src="https://unpkg.com/barry-cache@latest/assets/barry-cache.png" alt="Barry Cache" width="420">
 </p>
 
 Barry Cache remembers your repo.

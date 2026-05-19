@@ -15,6 +15,7 @@
   },
   "files": [
     "dist",
+    "assets/barry-cache.png",
     "README.md"
   ],
   "engines": {
