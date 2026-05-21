@@ -1,6 +1,6 @@
 {
   "name": "barry-cache",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "Barry Cache remembers your repo.",
   "type": "module",
   "bin": {
@@ -15,7 +15,6 @@
   },
   "files": [
     "dist",
-    "assets/barry-cache.png",
     "README.md"
   ],
   "engines": {

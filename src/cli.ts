@@ -86,7 +86,8 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       case "finalize": {
         const status = optionalChoice(parsed, "status", finalizeStatuses, "success", commandUsage("finalize"));
         const summary = requiredString(parsed, "summary", commandUsage("finalize"), { status: [...finalizeStatuses] });
-        print(await finalizeProject({ repo, status, summary }), json);
+        const result = await finalizeProject({ repo, status, summary });
+        print(result, json, formatFinalizeMessage(result));
         break;
       }
       case "adr": {
@@ -287,6 +288,14 @@ async function handleAdrCommand(parsed: ParsedArgs, repo: string, json: boolean)
 function formatAdrList(adrs: Awaited<ReturnType<typeof listAdrs>>): string {
   if (adrs.length === 0) return "No ADRs found.";
   return adrs.map((adr) => `${adr.id}  ${adr.status}  ${adr.title} (${adr.path})`).join("\n");
+}
+
+function formatFinalizeMessage(result: Awaited<ReturnType<typeof finalizeProject>>): string {
+  return [
+    `Saved operational handoff to ${result.path}.`,
+    "Finalize writes operational memory only; it does not update canonical context in docs/context/.",
+    "If this task introduced durable implementation behavior, add or update docs/context/features/*/FACTS.jsonl and run barry-cache validate.",
+  ].join("\n");
 }
 
 function formatInitMessage(result: InitResult): string {

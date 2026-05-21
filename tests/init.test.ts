@@ -39,11 +39,15 @@ describe("initProject", () => {
       expect(agents).toContain("Barry Cache");
       expect(agents).toContain("bun run barry -- resume --task");
       expect(agents).toContain("bun run barry -- validate");
+      expect(agents).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
+      expect(agents).toContain("Finalize writes operational memory only.");
       expect(agents).toContain("run `bun install` first");
       expect(agents).not.toContain("barry-cache resume --task");
 
       const cursor = await readFile(join(repo, ".cursor/rules/barry-cache.mdc"), "utf8");
       expect(cursor).toContain("bun run barry -- resume --task");
+      expect(cursor).toContain("bun run barry -- finalize --status success --summary");
+      expect(cursor).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
 
       const maintenance = await readFile(join(repo, "docs/context/MAINTENANCE.md"), "utf8");
       expect(maintenance).toContain("Save an agent session");

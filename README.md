@@ -1,7 +1,7 @@
 # Barry Cache
 
 <p align="center">
-  <img src="https://unpkg.com/barry-cache@latest/assets/barry-cache.png" alt="Barry Cache" width="420">
+  <img src="https://raw.githubusercontent.com/AlexanderIstomin/barry-cache/main/assets/barry-cache.png" alt="Barry Cache" width="420">
 </p>
 
 Barry Cache remembers your repo.
@@ -149,6 +149,8 @@ barry-cache finalize --status partial --summary "Found root cause but did not pa
 It appends a JSONL handoff record to `.context-state/handoffs/handoffs.jsonl`.
 
 Use this before ending a meaningful work session so the next agent can recover what happened.
+
+`finalize` writes operational memory only. It does not update canonical project context in `docs/context/`. If a task introduced durable implementation behavior, add or update source-backed facts in `docs/context/features/*/FACTS.jsonl` and run `barry-cache validate`.
 
 Statuses:
 - `success`: the task was completed.
@@ -345,6 +347,7 @@ Rules:
 3. Put uncertain notes, blockers, and next steps in operational memory, not canonical facts.
 4. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
 5. Run barry-cache validate before finishing.
+6. Do not claim Barry canonical memory is updated unless docs/context/ changed.
 ```
 
 The minimum useful save is:

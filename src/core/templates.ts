@@ -53,6 +53,12 @@ Before handing off substantial work, record factual evidence:
 \`\`\`bash
 ${commandPrefix} finalize --status success --summary "<summary>"
 \`\`\`
+
+Memory policy:
+
+- Finalize writes operational memory only.
+- Do not claim Barry canonical memory is updated unless \`docs/context/\` changed.
+- If a task adds durable implementation behavior, add or update source-backed facts in \`docs/context/features/*/FACTS.jsonl\` and run \`${commandPrefix} validate\`.
 `;
 }
 
