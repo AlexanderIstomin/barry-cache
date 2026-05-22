@@ -1,8 +1,8 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { adrToText, linkedAdrsForSources, listAdrs, type AdrRecord } from "./adr";
-import { listDirs, readTextIfExists, rel, repoPath } from "./fs";
-import { validateFact } from "./validate";
+import { adrToText, linkedAdrsForSources, type AdrRecord } from "./adr";
+import { readContextSnapshot } from "./context-cache";
+import { rel, repoPath } from "./fs";
 import type { FactRecord, FeaturePack, RouteMatch } from "./types";
 
 export interface RouteResult {
@@ -23,8 +23,7 @@ export interface SearchResult {
 }
 
 export async function routeTask({ repo, task }: { repo: string; task: string }): Promise<RouteResult> {
-  const features = await readFeaturePacks(repo);
-  const adrs = await listAdrs({ repo });
+  const { features, adrs } = await readContextSnapshot(repo);
   const taskTokens = tokens(task);
   const routes = features
     .map((feature) => scoreFeature(feature, taskTokens, adrs))
@@ -34,8 +33,7 @@ export async function routeTask({ repo, task }: { repo: string; task: string }):
 }
 
 export async function searchContext({ repo, query }: { repo: string; query: string }): Promise<SearchResult> {
-  const features = await readFeaturePacks(repo);
-  const adrs = await listAdrs({ repo });
+  const { features, adrs } = await readContextSnapshot(repo);
   const queryTokens = tokens(query);
   const results: SearchResult["results"] = [];
 
@@ -92,8 +90,7 @@ export async function loadContext({ repo, route }: { repo: string; route: string
   sources: string[];
   adrs: AdrRecord[];
 }> {
-  const features = await readFeaturePacks(repo);
-  const adrs = await listAdrs({ repo });
+  const { features, adrs } = await readContextSnapshot(repo);
   const feature = features.find((item) => item.slug === route) ?? null;
   if (!feature) return { feature: null, facts: [], sources: [], adrs: [] };
   return {
@@ -161,32 +158,7 @@ export async function finalizeProject(options: {
 }
 
 export async function readFeaturePacks(repo: string): Promise<FeaturePack[]> {
-  const root = repoPath(repo, "docs/context/features");
-  const slugs = await listDirs(root);
-  const features: FeaturePack[] = [];
-  for (const slug of slugs) {
-    const dir = join(root, slug);
-    features.push({
-      slug,
-      dir,
-      readme: await readTextIfExists(join(dir, "README.md")),
-      idmap: await readTextIfExists(join(dir, "IDMAP.md")),
-      graph: await readTextIfExists(join(dir, "KG.adj")),
-      facts: await readFacts(join(dir, "FACTS.jsonl")),
-    });
-  }
-  return features;
-}
-
-async function readFacts(path: string): Promise<FactRecord[]> {
-  const rows = (await readTextIfExists(path)).split(/\r?\n/);
-  const facts: FactRecord[] = [];
-  for (const row of rows) {
-    if (row.trim().length === 0) continue;
-    const parsed = JSON.parse(row) as unknown;
-    if (validateFact(parsed) === null) facts.push(parsed as FactRecord);
-  }
-  return facts;
+  return (await readContextSnapshot(repo)).features;
 }
 
 function scoreFeature(feature: FeaturePack, taskTokens: string[], adrs: AdrRecord[]): RouteMatch {

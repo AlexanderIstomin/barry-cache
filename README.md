@@ -12,7 +12,7 @@ It creates source-backed context files for coding agents, validates them, and gi
 
 Barry Cache exists because coding agents need durable project context that is shared, reviewable, and smaller than the whole repository. Private assistant memory, ad hoc chat history, and vendor-specific instruction files drift apart; Barry keeps the source of truth in the repo and lets every agent load the same facts.
 
-The structure is intentionally layered: canonical context lives in `docs/context/`, operational continuity lives in `.context-state/`, and generated retrieval data lives in `.context-cache/`. Canonical facts stay source-backed and validated, while `route`, `search`, `load`, and `resume` project only the relevant feature pack into an agent session.
+The structure is intentionally layered: canonical context lives in `docs/context/`, operational continuity lives in `.context-state/`, and generated retrieval data lives in `.context-cache/`. Canonical facts stay source-backed and validated, while `route`, `search`, `load`, and `resume` project only the relevant feature pack into an agent session. Repeated retrieval commands reuse `.context-cache/context-index.json` when the source context file manifest is unchanged.
 
 That gives Barry three core advantages: it is agent-agnostic, because adapters point to one canonical context; auditable, because facts carry stable IDs and source references; and context-efficient, because agents start from a small routed slice instead of rereading the whole codebase.
 
@@ -296,6 +296,8 @@ bun run barry -- load --route editor-media-runtime
 ```
 
 This keeps the agent from reading every context file in the repo.
+
+Barry also keeps a disposable parsed context index in `.context-cache/context-index.json`. It is keyed by the source context files and directories, so repeated `resume`, `load`, `route`, `search`, and `review --json` commands reuse parsed context until a context source file changes.
 
 If an agent ignores the repo instructions, prompt it explicitly:
 

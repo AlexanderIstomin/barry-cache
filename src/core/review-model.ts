@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { adrMatchesSource, listAdrs, type AdrRecord } from "./adr";
-import { readFeaturePacks } from "./context";
+import { adrMatchesSource, type AdrRecord } from "./adr";
+import { readContextSnapshot } from "./context-cache";
 import { readTextIfExists, rel, repoPath } from "./fs";
 import { buildReviewTree, type ReviewTreeModel } from "./review-tree";
 import type { FactRecord, FeaturePack } from "./types";
@@ -90,8 +90,7 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
   const warnings: string[] = [];
   const facts: ReviewFactItem[] = [];
   const timeline: ReviewTimelineItem[] = [];
-  const features = await readFeaturePacks(repo);
-  const adrs = await listAdrs({ repo });
+  const { features, adrs } = await readContextSnapshot(repo);
 
   for (const adr of adrs) addAdr(graph, adr);
 

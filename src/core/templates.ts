@@ -28,6 +28,8 @@ Barry Cache remembers this repo through source-backed context files.
 
 ${commandNote}
 
+Repeated retrieval commands use the disposable parsed index in \`.context-cache/context-index.json\` when source context files have not changed.
+
 Start task context with:
 
 \`\`\`bash
@@ -126,7 +128,7 @@ Barry Cache keeps repo context source-backed, validated, and easy for agents to 
 
 This directory is the canonical project memory for Barry Cache. It keeps durable implementation context in Git so humans and agents can review the same source-backed facts instead of relying on private assistant memory or stale chat history.
 
-Barry separates three concerns: \`docs/context/\` is reviewed truth, \`.context-state/\` is operational session continuity, and \`.context-cache/\` is disposable retrieval data. Use this structure to explain existing behavior, route tasks, validate facts, and resume agent work without loading the whole repo.
+Barry separates three concerns: \`docs/context/\` is reviewed truth, \`.context-state/\` is operational session continuity, and \`.context-cache/\` is disposable retrieval data. Barry stores a parsed context index in \`.context-cache/context-index.json\` and reuses it while the source context manifest is unchanged. Use this structure to explain existing behavior, route tasks, validate facts, and resume agent work without loading the whole repo.
 `;
 
 export const adrReadmeMd = `# Architecture Decision Records
@@ -149,7 +151,7 @@ Barry Cache separates canonical context, operational state, and generated caches
 
 - Canonical context lives in \`docs/context/\`.
 - Operational continuity lives in \`.context-state/\`.
-- Generated retrieval data lives in \`.context-cache/\`.
+- Generated retrieval data lives in \`.context-cache/\`, including the disposable parsed context index.
 `;
 
 export const factSchema = {
