@@ -1,7 +1,15 @@
 {
   "name": "barry-cache",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Barry Cache remembers your repo.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderIstomin/barry-cache.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AlexanderIstomin/barry-cache/issues"
+  },
+  "homepage": "https://github.com/AlexanderIstomin/barry-cache#readme",
   "type": "module",
   "bin": {
     "barry-cache": "./dist/cli.js"
