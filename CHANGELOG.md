@@ -16,6 +16,7 @@
 - initProject skips adding devDependency when package name is barry-cache
 - Barry canonical context lives in docs/context/
 - Generated Barry agent instructions recommend ISO 8601 fact updated_at timestamps so same-day review timeline ordering can be preserved
+- Generated Barry agent instructions recommend collision-resistant timestamp/hash fact IDs while allowing dense review UI to display compact labels
 
 ### Review Interface
 - Review server serves zero-build review UI assets through serve-handler
@@ -42,3 +43,5 @@
 - Review feature cards use a muted dusty rose background instead of the previous brown and green feature colors so feature cards remain distinct from fact nodes
 - Review operational timeline records infer and stack fileless handoffs by ranking summary evidence to a single strongest feature while standalone operation cards stack vertically instead of sharing one row
 - Timeline handoff inspector omits the raw Facts metadata row for handoff, failure, and strategy records because related facts are already shown as colored chips
+- Review related fact chips display long timestamp/hash fact IDs in compact prefix-hash form such as REV-a8f3 while preserving full IDs in data attributes and tooltips
+- Review canvas wheel controls pan and zoom with plain wheel for vertical canvas pan, Shift+wheel for horizontal canvas pan, and Ctrl or Meta+wheel for zoom

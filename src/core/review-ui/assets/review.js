@@ -412,7 +412,12 @@
       zoomAt(wheelZoomMultiplier(delta.y), event.clientX - rect.left, event.clientY - rect.top);
       return;
     }
-    panCanvasByWheelDelta(delta);
+    panCanvasByWheelDelta(wheelPanDelta(event, delta));
+  }
+
+  function wheelPanDelta(event, delta) {
+    if (event.shiftKey) return { x: delta.y || delta.x, y: 0 };
+    return delta;
   }
 
   function panCanvasByWheelDelta(delta) {
@@ -1946,8 +1951,9 @@
       visibleKeys.map(function (key) {
         var item = factItemByKey(key);
         var id = item ? item.fact.id : factIdFromKey(key);
+        var displayId = compactFactId(id);
         var description = relatedFactTooltip(key, item);
-        return '<button class="' + relatedFactClass(key, item) + '" type="button" data-related-fact-id="' + attr(id) + '" data-related-fact-key="' + attr(key) + '" title="' + attr(description) + '" aria-label="' + attr(id + ": " + description) + '">' + escapeHtml(id) + '</button>';
+        return '<button class="' + relatedFactClass(key, item) + '" type="button" data-related-fact-id="' + attr(id) + '" data-related-fact-key="' + attr(key) + '" title="' + attr(description) + '" aria-label="' + attr(description) + '">' + escapeHtml(displayId) + '</button>';
       }).join("") +
       (remainingCount > 0 ? '<button class="related-chip related-more" type="button" data-related-show-all="true">+' + remainingCount + '</button>' : "") +
       '</div>';
@@ -2455,7 +2461,16 @@
 
   function relatedFactTooltip(key, item) {
     item = item || factItemByKey(key);
-    return item ? featureLabelForRoute(item.route) + ": " + assertion(item.fact) : factIdFromKey(key);
+    var id = item ? item.fact.id : factIdFromKey(key);
+    return item ? id + ": " + featureLabelForRoute(item.route) + ": " + assertion(item.fact) : id;
+  }
+
+  function compactFactId(id) {
+    var match = String(id || "").match(/^([A-Z][A-Z0-9]*)-\d{8}T\d{6}Z-([a-z0-9]{4,})$/);
+    if (!match) return String(id || "");
+    var prefix = match[1];
+    var suffix = match[2];
+    return prefix + "-" + suffix;
   }
 
   function relatedFactClass(key, item) {

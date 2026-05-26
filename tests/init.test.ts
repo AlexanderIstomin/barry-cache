@@ -42,6 +42,7 @@ describe("initProject", () => {
       expect(agents).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
       expect(agents).toContain("Finalize writes operational memory only.");
       expect(agents).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
+      expect(agents).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
       expect(agents).toContain("run `bun install` first");
       expect(agents).not.toContain("barry-cache resume --task");
       expect(agents).toContain("Decision records:");
@@ -54,6 +55,7 @@ describe("initProject", () => {
       expect(cursor).toContain("bun run barry -- finalize --status success --summary");
       expect(cursor).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
       expect(cursor).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
+      expect(cursor).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
       expect(cursor).toContain('bun run barry -- adr new --title "<decision>" --tags "<tags>"');
       expect(cursor).toContain("Do not create ADRs for routine bug fixes");
 

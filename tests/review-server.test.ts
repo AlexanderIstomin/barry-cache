@@ -184,6 +184,10 @@ describe("review server", () => {
         expect(script).toContain("data-related-fact-key");
         expect(script).toContain("relatedFactTooltip(key, item)");
         expect(script).toContain("relatedFactClass(key, item)");
+        expect(script).toContain("compactFactId(id)");
+        expect(script).toContain("var displayId = compactFactId(id);");
+        expect(script).toContain("return prefix + \"-\" + suffix;");
+        expect(script).toContain("escapeHtml(displayId)");
         expect(script).toContain("is-current-feature");
         expect(script).toContain("item.route === state.selectedFeature");
         expect(script).toContain('featureLabelForRoute(item.route) + ": " + assertion(item.fact)');
@@ -211,6 +215,9 @@ describe("review server", () => {
         expect(script).toContain("panMoved");
         expect(script).toContain("handleCanvasWheel");
         expect(script).toContain("panCanvasByWheelDelta");
+        expect(script).toContain("wheelPanDelta(event, delta)");
+        expect(script).toContain("event.shiftKey");
+        expect(script).toContain("return { x: delta.y || delta.x, y: 0 };");
         expect(script).toContain("wheelZoomMultiplier");
         expect(script).toContain("event.ctrlKey || event.metaKey");
         expect(script).toContain("state.transform.x -= delta.x");

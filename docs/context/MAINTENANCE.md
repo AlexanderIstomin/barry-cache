@@ -3,6 +3,7 @@
 - Keep project truth in Git.
 - Add source-backed facts to feature `FACTS.jsonl` files.
 - Use ISO 8601 timestamps in fact `updated_at` values when saving new facts.
+- Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`.
 - Use `barry-cache adr new --title "<decision>"` for decisions that change architecture.
 - Reference ADR files from decision facts through the fact `src` array.
 - Treat `.context-state/` as operational memory, not canonical truth.

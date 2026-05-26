@@ -62,6 +62,7 @@ Memory policy:
 - Do not claim Barry canonical memory is updated unless \`docs/context/\` changed.
 - If a task adds durable implementation behavior, add or update source-backed facts in \`docs/context/features/*/FACTS.jsonl\` and run \`${commandPrefix} validate\`.
 - Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts, so same-day feature order is preserved in review timelines.
+- Use collision-resistant fact IDs like \`REV-20260526T160512Z-a8f3\`; dense review UI may display them as \`REV-a8f3\`.
 
 ${decisionRecordInstructions(commandPrefix)}
 	`;
@@ -106,6 +107,7 @@ export const maintenanceMd = `# Context Maintenance
 - Keep project truth in Git.
 - Add source-backed facts to feature \`FACTS.jsonl\` files.
 - Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts.
+- Use collision-resistant fact IDs like \`REV-20260526T160512Z-a8f3\`.
 - Use \`barry-cache adr new --title "<decision>"\` for decisions that change architecture.
 - Reference ADR files from decision facts through the fact \`src\` array.
 - Treat \`.context-state/\` as operational memory, not canonical truth.
