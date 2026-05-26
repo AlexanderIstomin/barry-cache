@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { adrReadmeMd, adrSchema, applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema, agentInstructions } from "./templates";
+import { adrReadmeMd, adrSchema, agentInstructions, applyManagedBlock, conceptOverviewMd, decisionRecordInstructions, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema } from "./templates";
 import { exists, readText, repoPath, writeIfChanged, writeText } from "./fs";
 import type { AgentInstructionTarget, InitResult, PackageManagerHint } from "./types";
 
@@ -119,19 +119,27 @@ async function patchPackageJson(repo: string, dryRun: boolean, result: InitResul
   if (!(await exists(path))) return undefined;
 
   const parsed = JSON.parse(await readText(path)) as Record<string, unknown>;
+  const isSelfPackage = parsed.name === "barry-cache";
   const scripts = typeof parsed.scripts === "object" && parsed.scripts !== null ? parsed.scripts as Record<string, string> : {};
-  scripts.barry ??= "barry-cache";
-  scripts["barry:validate"] ??= "barry-cache validate";
-  scripts["barry:resume"] ??= "barry-cache resume";
-  scripts["barry:finalize"] ??= "barry-cache finalize";
+  const barryCommand = isSelfPackage ? "bun run src/cli.ts" : "barry-cache";
+  patchScript(scripts, "barry", barryCommand, isSelfPackage ? "barry-cache" : undefined);
+  patchScript(scripts, "barry:validate", `${barryCommand} validate`, isSelfPackage ? "barry-cache validate" : undefined);
+  patchScript(scripts, "barry:resume", `${barryCommand} resume`, isSelfPackage ? "barry-cache resume" : undefined);
+  patchScript(scripts, "barry:finalize", `${barryCommand} finalize`, isSelfPackage ? "barry-cache finalize" : undefined);
   parsed.scripts = scripts;
 
-  const devDependencies = typeof parsed.devDependencies === "object" && parsed.devDependencies !== null ? parsed.devDependencies as Record<string, string> : {};
-  devDependencies["barry-cache"] ??= "^0.1.0";
-  parsed.devDependencies = devDependencies;
+  if (!isSelfPackage) {
+    const devDependencies = typeof parsed.devDependencies === "object" && parsed.devDependencies !== null ? parsed.devDependencies as Record<string, string> : {};
+    devDependencies["barry-cache"] ??= "^0.1.0";
+    parsed.devDependencies = devDependencies;
+  }
 
   record(result, await writeIfChanged(path, `${JSON.stringify(parsed, null, 2)}\n`, dryRun), "package.json");
   return await detectPackageManager(repo, parsed);
+}
+
+function patchScript(scripts: Record<string, string>, name: string, value: string, replaceValue?: string): void {
+  if (scripts[name] === undefined || scripts[name] === replaceValue) scripts[name] = value;
 }
 
 async function detectPackageManager(repo: string, packageJson: Record<string, unknown>): Promise<PackageManagerHint> {
@@ -186,7 +194,10 @@ Memory policy:
 - Finalize writes operational memory only.
 - Do not claim Barry canonical memory is updated unless \`docs/context/\` changed.
 - If a task adds durable implementation behavior, add or update source-backed facts in \`docs/context/features/*/FACTS.jsonl\` and run \`${commandPrefix} validate\`.
-`;
+- Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts, so same-day feature order is preserved in review timelines.
+
+${decisionRecordInstructions(commandPrefix)}
+	`;
 }
 
 function llmsTxt(): string {

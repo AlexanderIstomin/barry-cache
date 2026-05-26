@@ -8,6 +8,8 @@ Barry Cache remembers your repo.
 
 It creates source-backed context files for coding agents, validates them, and gives agents a deterministic CLI for loading the smallest useful slice of project knowledge.
 
+[Changelog](https://github.com/AlexanderIstomin/barry-cache/blob/main/CHANGELOG.md)
+
 ## Reasoning
 
 Barry Cache exists because coding agents need durable project context that is shared, reviewable, and smaller than the whole repository. Private assistant memory, ad hoc chat history, and vendor-specific instruction files drift apart; Barry keeps the source of truth in the repo and lets every agent load the same facts.

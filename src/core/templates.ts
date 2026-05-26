@@ -61,7 +61,19 @@ Memory policy:
 - Finalize writes operational memory only.
 - Do not claim Barry canonical memory is updated unless \`docs/context/\` changed.
 - If a task adds durable implementation behavior, add or update source-backed facts in \`docs/context/features/*/FACTS.jsonl\` and run \`${commandPrefix} validate\`.
-`;
+- Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts, so same-day feature order is preserved in review timelines.
+
+${decisionRecordInstructions(commandPrefix)}
+	`;
+}
+
+export function decisionRecordInstructions(commandPrefix = "barry-cache"): string {
+  return `Decision records:
+
+- Create an ADR when a task introduces or changes durable architecture, repo policy, storage layout, agent protocol, or cross-module behavior.
+- Use \`${commandPrefix} adr new --title "<decision>" --tags "<tags>"\`.
+- Add or update a \`kind: "decision"\` fact in \`docs/context/features/*/FACTS.jsonl\` with \`src\` pointing to the ADR file.
+- Do not create ADRs for routine bug fixes, local refactors, temporary notes, or uncertain ideas.`;
 }
 
 export const indexMd = `# Context Index
@@ -93,6 +105,7 @@ export const maintenanceMd = `# Context Maintenance
 
 - Keep project truth in Git.
 - Add source-backed facts to feature \`FACTS.jsonl\` files.
+- Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts.
 - Use \`barry-cache adr new --title "<decision>"\` for decisions that change architecture.
 - Reference ADR files from decision facts through the fact \`src\` array.
 - Treat \`.context-state/\` as operational memory, not canonical truth.
@@ -167,7 +180,10 @@ export const factSchema = {
     "src": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
     "status": { "enum": ["active", "superseded", "deprecated", "missing", "conflict"] },
     "kind": { "enum": ["implemented", "decision", "constraint", "test", "risk", "open-question"] },
-    "updated_at": { "type": "string" },
+    "updated_at": {
+      "type": "string",
+      "description": "ISO 8601 timestamp for new facts; date-only values are accepted for legacy or imported facts but cannot preserve same-day ordering."
+    },
     "confidence": { "enum": ["low", "medium", "high"] },
     "tags": { "type": "array", "items": { "type": "string" } }
   }

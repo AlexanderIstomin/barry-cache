@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { createAdr } from "../src/core/adr";
 import { finalizeProject } from "../src/core/context";
 import { initProject } from "../src/core/init";
 import { buildReviewModel } from "../src/core/review-model";
@@ -44,6 +45,15 @@ async function addRendererPack(repo: string): Promise<void> {
   );
 }
 
+async function addTimelinePack(repo: string, slug: string, title: string, facts: object[]): Promise<void> {
+  const featureDir = join(repo, "docs/context/features", slug);
+  await mkdir(featureDir, { recursive: true });
+  await writeFile(join(featureDir, "README.md"), `# ${title}\n\nTimeline ordering fixture.\n`);
+  await writeFile(join(featureDir, "IDMAP.md"), "- `F01`: src/example.ts\n");
+  await writeFile(join(featureDir, "KG.adj"), `${slug} owns timeline-order\n`);
+  await writeFile(join(featureDir, "FACTS.jsonl"), facts.map((row) => JSON.stringify(row)).join("\n") + (facts.length > 0 ? "\n" : ""));
+}
+
 describe("buildReviewModel", () => {
   test("turns context packs and handoffs into inspectable graph data", async () => {
     await withTempRepo(async (repo) => {
@@ -85,6 +95,189 @@ describe("buildReviewModel", () => {
         kind: "cites",
       }));
       expect(new Set(model.nodes.map((node) => node.id)).size).toBe(model.nodes.length);
+    });
+  });
+
+  test("builds grouped search items and canonical-first timeline events", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      const adr = await createAdr({
+        repo,
+        title: "Use renderer transport clock",
+        date: "2026-05-16",
+        tags: ["renderer", "clock"],
+      });
+      await addRendererPack(repo);
+      await writeFile(
+        join(repo, "docs/context/features/renderer-runtime/FACTS.jsonl"),
+        [
+          {
+            id: "RR001",
+            subject: "A0",
+            predicate: "owns",
+            object: "transport clock",
+            src: ["F01"],
+            status: "active",
+            kind: "implemented",
+            updated_at: "2026-05-17",
+          },
+          {
+            id: "RR002",
+            subject: "transport clock",
+            predicate: "drives",
+            object: "frame scheduler",
+            src: [adr.path, "src/runtime/clock.ts"],
+            status: "active",
+            kind: "decision",
+            updated_at: "2026-05-18",
+          },
+        ].map((row) => JSON.stringify(row)).join("\n") + "\n",
+      );
+      await finalizeProject({
+        repo,
+        status: "success",
+        summary: "Implemented renderer transport clock.",
+        files: ["src/runtime/clock.ts"],
+      });
+
+      const model = await buildReviewModel({ repo });
+
+      expect(model.search.groups.map((group) => group.kind)).toEqual([
+        "feature",
+        "fact",
+        "adr",
+        "entity",
+        "source",
+        "timeline",
+      ]);
+      expect(model.search.groups.find((group) => group.kind === "fact")?.items).toContainEqual(expect.objectContaining({
+        id: "fact:RR002",
+        label: "RR002",
+        route: "renderer-runtime",
+      }));
+      expect(model.search.groups.find((group) => group.kind === "adr")?.items).toContainEqual(expect.objectContaining({
+        id: "adr:ADR-0001",
+        label: "ADR-0001",
+      }));
+
+      expect(model.timeline.map((item) => item.kind)).toEqual(["adr", "fact", "fact", "handoff"]);
+      expect(model.timeline[0]).toEqual(expect.objectContaining({
+        id: "timeline:adr:ADR-0001",
+        timestamp: "2026-05-16",
+        summary: "Use renderer transport clock",
+      }));
+      expect(model.timeline[2]).toEqual(expect.objectContaining({
+        id: "timeline:fact:renderer-runtime:RR002",
+        route: "renderer-runtime",
+        summary: "transport clock drives frame scheduler",
+      }));
+      expect(model.timeline[2]?.related.adrs).toContain("ADR-0001");
+      expect(model.timeline[2]?.related.sources).toContain("src/runtime/clock.ts");
+
+      expect(model.timelineView.features).toContainEqual(expect.objectContaining({
+        route: "renderer-runtime",
+        label: "Renderer Runtime",
+        start: "2026-05-16",
+        end: expect.stringMatching(/^2026-05-/),
+        decisions: expect.arrayContaining([
+          expect.objectContaining({ id: "timeline:adr:ADR-0001" }),
+          expect.objectContaining({ id: "timeline:fact:renderer-runtime:RR002" }),
+        ]),
+        facts: expect.arrayContaining([
+          expect.objectContaining({ id: "timeline:fact:renderer-runtime:RR001" }),
+        ]),
+      }));
+      expect(model.timelineView.operations).toContainEqual(expect.objectContaining({
+        kind: "handoff",
+        summary: "Implemented renderer transport clock.",
+      }));
+      expect(model.timelineView.ticks).toContain("2026-05-16");
+      expect(model.timelineView.ticks).toContain("2026-05-18");
+    });
+  });
+
+  test("sorts timeline feature groups chronologically with undated groups last", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      await addTimelinePack(repo, "alpha-undated", "Alpha Undated", []);
+      await addTimelinePack(repo, "beta-later", "Beta Later", [
+        {
+          id: "BL001",
+          subject: "beta",
+          predicate: "ships",
+          object: "later work",
+          src: ["F01"],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-20",
+        },
+      ]);
+      await addTimelinePack(repo, "gamma-earlier", "Gamma Earlier", [
+        {
+          id: "GE001",
+          subject: "gamma",
+          predicate: "ships",
+          object: "earlier work",
+          src: ["F01"],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-18",
+        },
+      ]);
+
+      const model = await buildReviewModel({ repo });
+
+      expect(model.timelineView.features.map((feature) => feature.route)).toEqual([
+        "gamma-earlier",
+        "beta-later",
+        "alpha-undated",
+      ]);
+    });
+  });
+
+  test("uses full timestamps for same-day timeline feature ordering while displaying dates", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      const adr = await createAdr({
+        repo,
+        title: "Alpha same-day decision",
+        date: "2026-05-26",
+      });
+      await addTimelinePack(repo, "alpha-later", "Alpha Later", [
+        {
+          id: "AL001",
+          subject: "alpha",
+          predicate: "ships",
+          object: "later same-day work",
+          src: ["F01", adr.path],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-26T16:30:00.000Z",
+        },
+      ]);
+      await addTimelinePack(repo, "beta-earlier", "Beta Earlier", [
+        {
+          id: "BE001",
+          subject: "beta",
+          predicate: "ships",
+          object: "earlier same-day work",
+          src: ["F01"],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-26T09:15:00.000Z",
+        },
+      ]);
+
+      const model = await buildReviewModel({ repo });
+
+      expect(model.timelineView.features.map((feature) => feature.route)).toEqual([
+        "beta-earlier",
+        "alpha-later",
+      ]);
+      expect(model.timelineView.features[0]).toEqual(expect.objectContaining({
+        start: "2026-05-26",
+        startTime: "2026-05-26T09:15:00.000Z",
+      }));
     });
   });
 });

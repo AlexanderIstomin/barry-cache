@@ -7,7 +7,8 @@ import type { FactRecord, FeaturePack } from "./types";
 
 export type ReviewNodeKind = "feature" | "fact" | "entity" | "source" | "adr" | "handoff" | "failure" | "strategy";
 export type ReviewEdgeKind = "contains" | "asserts" | "cites" | "supersedes" | "touches" | "related-to";
-export type ReviewTimelineKind = "handoff" | "failure" | "strategy";
+export type ReviewTimelineKind = "adr" | "fact" | "handoff" | "failure" | "strategy";
+export type ReviewSearchKind = "feature" | "fact" | "adr" | "entity" | "source" | "timeline";
 
 export interface ReviewNode {
   id: string;
@@ -34,8 +35,15 @@ export interface ReviewTimelineItem {
   summary: string;
   timestamp?: string;
   status?: string;
+  route?: string;
   source: string;
   files: string[];
+  related: {
+    features: string[];
+    facts: string[];
+    adrs: string[];
+    sources: string[];
+  };
   meta: Record<string, unknown>;
 }
 
@@ -43,6 +51,42 @@ export interface ReviewFactItem {
   route: string;
   source: string;
   fact: FactRecord;
+}
+
+export interface ReviewSearchItem {
+  id: string;
+  kind: ReviewSearchKind;
+  label: string;
+  subtitle: string;
+  source?: string | undefined;
+  route?: string | undefined;
+  targetId?: string;
+  timelineId?: string;
+  text: string;
+}
+
+export interface ReviewSearchGroup {
+  kind: ReviewSearchKind;
+  label: string;
+  items: ReviewSearchItem[];
+}
+
+export interface ReviewTimelineFeature {
+  route: string;
+  label: string;
+  start: string;
+  end: string;
+  startTime: string;
+  endTime: string;
+  decisions: ReviewTimelineItem[];
+  facts: ReviewTimelineItem[];
+  events: ReviewTimelineItem[];
+}
+
+export interface ReviewTimelineView {
+  ticks: string[];
+  features: ReviewTimelineFeature[];
+  operations: ReviewTimelineItem[];
 }
 
 export interface ReviewModel {
@@ -65,6 +109,10 @@ export interface ReviewModel {
   facts: ReviewFactItem[];
   tree: ReviewTreeModel;
   timeline: ReviewTimelineItem[];
+  timelineView: ReviewTimelineView;
+  search: {
+    groups: ReviewSearchGroup[];
+  };
   warnings: string[];
 }
 
@@ -106,8 +154,11 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
         fact,
       });
       addFact(graph, repo, feature, fact, sourceMap, adrs);
+      timeline.push(factTimelineItem(repo, feature, fact, sourceMap, adrs));
     }
   }
+
+  for (const adr of adrs) timeline.push(adrTimelineItem(adr));
 
   timeline.push(...await addOperationalRecords({
     graph,
@@ -138,12 +189,14 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
     warnings,
   }));
 
-  timeline.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? "") || a.id.localeCompare(b.id));
+  timeline.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? "") || timelineKindRank(a.kind) - timelineKindRank(b.kind) || a.id.localeCompare(b.id));
 
   const nodes = [...graph.nodes.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
   const edges = [...graph.edges.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
   const sortedFacts = facts.sort((a, b) => a.fact.id.localeCompare(b.fact.id));
   const tree = buildReviewTree(sortedFacts);
+  const timelineView = buildTimelineView(features, timeline);
+  const search = buildSearchModel(nodes, sortedFacts, timeline);
   return {
     generated_at: new Date().toISOString(),
     repo,
@@ -164,6 +217,8 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
     facts: sortedFacts,
     tree,
     timeline,
+    timelineView,
+    search,
     warnings,
   };
 }
@@ -279,6 +334,67 @@ function addAdr(graph: MutableGraph, adr: AdrRecord): void {
   }
 }
 
+function factTimelineItem(
+  repo: string,
+  feature: FeaturePack,
+  fact: FactRecord,
+  sourceMap: Map<string, string>,
+  adrs: AdrRecord[],
+): ReviewTimelineItem {
+  const resolvedSources = fact.src.map((source) => sourceMap.get(source) ?? source);
+  const linkedAdrs = resolvedSources
+    .map((source) => adrs.find((adr) => adrMatchesSource(adr, source)))
+    .filter((adr): adr is AdrRecord => Boolean(adr));
+  const sourceFiles = resolvedSources.filter((source) => !linkedAdrs.some((adr) => adrMatchesSource(adr, source)));
+  return {
+    id: `timeline:fact:${feature.slug}:${fact.id}`,
+    kind: "fact",
+    label: `${feature.slug}: ${fact.id}`,
+    summary: factAssertion(fact),
+    timestamp: fact.updated_at,
+    status: fact.status,
+    route: feature.slug,
+    source: `${rel(repo, join(feature.dir, "FACTS.jsonl"))}#${fact.id}`,
+    files: sourceFiles,
+    related: {
+      features: [feature.slug],
+      facts: [fact.id],
+      adrs: linkedAdrs.map((adr) => adr.id),
+      sources: sourceFiles,
+    },
+    meta: {
+      fact,
+      kind: fact.kind,
+      confidence: fact.confidence,
+      tags: fact.tags ?? [],
+    },
+  };
+}
+
+function adrTimelineItem(adr: AdrRecord): ReviewTimelineItem {
+  return {
+    id: `timeline:adr:${adr.id}`,
+    kind: "adr",
+    label: adr.id,
+    summary: adr.title,
+    timestamp: adr.date,
+    status: adr.status,
+    source: adr.path,
+    files: [adr.path],
+    related: {
+      features: [],
+      facts: [],
+      adrs: [adr.id],
+      sources: [adr.path],
+    },
+    meta: {
+      title: adr.title,
+      tags: adr.tags,
+      supersedes: adr.supersedes,
+    },
+  };
+}
+
 function addKgEdges(graph: MutableGraph, feature: FeaturePack): void {
   for (const line of feature.graph.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -338,6 +454,12 @@ async function addOperationalRecords(options: {
       summary,
       source: `${options.path}#L${index + 1}`,
       files,
+      related: {
+        features: [],
+        facts: [],
+        adrs: [],
+        sources: files,
+      },
       meta: record,
     };
     const timestamp = stringValue(record.updated_at);
@@ -367,6 +489,142 @@ async function readJsonl(path: string, displayPath: string, warnings: string[]):
     }
   });
   return records;
+}
+
+function buildTimelineView(features: FeaturePack[], timeline: ReviewTimelineItem[]): ReviewTimelineView {
+  const adrById = new Map(
+    timeline
+      .filter((item) => item.kind === "adr")
+      .flatMap((item) => item.related.adrs.map((adrId) => [adrId, item] as const)),
+  );
+  const factEvents = timeline.filter((item) => item.kind === "fact");
+  const operations = timeline.filter((item) => item.kind === "handoff" || item.kind === "failure" || item.kind === "strategy");
+  const groupedFeatures = features.map((feature) => {
+    const featureFacts = factEvents.filter((item) => item.route === feature.slug || item.related.features.includes(feature.slug));
+    const linkedAdrs = unique(featureFacts.flatMap((item) => item.related.adrs))
+      .map((adrId) => adrById.get(adrId))
+      .filter((item): item is ReviewTimelineItem => Boolean(item));
+    const decisionFacts = featureFacts.filter((item) => stringValue(item.meta.kind) === "decision");
+    const decisions = sortTimelineItems([...linkedAdrs, ...decisionFacts]);
+    const facts = sortTimelineItems(featureFacts.filter((item) => stringValue(item.meta.kind) === "implemented"));
+    const events = sortTimelineItems([...featureFacts, ...linkedAdrs]);
+    const timestamps = events.map((item) => item.timestamp).filter((value): value is string => Boolean(value));
+    const preciseTimestamps = timestamps.filter(hasTimelineTime);
+    const dates = timestamps.map((timestamp) => timelineDate(timestamp)).filter((value): value is string => Boolean(value));
+    return {
+      route: feature.slug,
+      label: firstMarkdownHeading(feature.readme) || feature.slug,
+      start: dates[0] ?? "",
+      end: dates[dates.length - 1] ?? "",
+      startTime: preciseTimestamps[0] ?? timestamps[0] ?? "",
+      endTime: preciseTimestamps[preciseTimestamps.length - 1] ?? timestamps[timestamps.length - 1] ?? "",
+      decisions,
+      facts,
+      events,
+    };
+  }).sort(compareTimelineFeatures);
+
+  return {
+    ticks: unique(timeline.map((item) => timelineDate(item.timestamp)).filter((value): value is string => Boolean(value))),
+    features: groupedFeatures,
+    operations,
+  };
+}
+
+function compareTimelineFeatures(a: ReviewTimelineFeature, b: ReviewTimelineFeature): number {
+  return timelineFeatureSortTime(a).localeCompare(timelineFeatureSortTime(b))
+    || (a.endTime || "").localeCompare(b.endTime || "")
+    || a.route.localeCompare(b.route);
+}
+
+function timelineFeatureSortTime(feature: ReviewTimelineFeature): string {
+  return feature.startTime || feature.start || "9999-12-31T23:59:59.999Z";
+}
+
+function sortTimelineItems(items: ReviewTimelineItem[]): ReviewTimelineItem[] {
+  return uniqueItems(items, (item) => item.id)
+    .sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? "") || timelineKindRank(a.kind) - timelineKindRank(b.kind) || a.id.localeCompare(b.id));
+}
+
+function uniqueItems<T>(items: T[], key: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    const id = key(item);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    result.push(item);
+  }
+  return result;
+}
+
+function timelineDate(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const match = value.match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : value;
+}
+
+function hasTimelineTime(value: string): boolean {
+  return /T\d{2}:\d{2}/.test(value);
+}
+
+function buildSearchModel(nodes: ReviewNode[], facts: ReviewFactItem[], timeline: ReviewTimelineItem[]): { groups: ReviewSearchGroup[] } {
+  const groups: ReviewSearchGroup[] = [
+    { kind: "feature", label: "Features", items: [] },
+    { kind: "fact", label: "Facts", items: [] },
+    { kind: "adr", label: "ADRs", items: [] },
+    { kind: "entity", label: "Entities", items: [] },
+    { kind: "source", label: "Sources", items: [] },
+    { kind: "timeline", label: "Timeline", items: [] },
+  ];
+  const byKind = new Map(groups.map((group) => [group.kind, group]));
+
+  for (const node of nodes) {
+    if (node.kind !== "feature" && node.kind !== "adr" && node.kind !== "entity" && node.kind !== "source") continue;
+    byKind.get(node.kind)?.items.push({
+      id: node.id,
+      kind: node.kind,
+      label: node.label,
+      subtitle: node.subtitle ?? node.source ?? node.kind,
+      source: node.source,
+      route: stringValue(node.meta.route),
+      targetId: node.id,
+      text: searchText([node.id, node.label, node.subtitle, node.source, ...Object.values(node.meta)]),
+    });
+  }
+
+  for (const item of facts) {
+    const fact = item.fact;
+    byKind.get("fact")?.items.push({
+      id: `fact:${fact.id}`,
+      kind: "fact",
+      label: fact.id,
+      subtitle: factAssertion(fact),
+      source: item.source,
+      route: item.route,
+      targetId: `fact:${fact.id}`,
+      text: searchText([fact.id, item.route, fact.subject, fact.predicate, fact.object, fact.status, fact.kind, fact.updated_at, ...fact.src, ...(fact.tags ?? [])]),
+    });
+  }
+
+  for (const item of timeline) {
+    byKind.get("timeline")?.items.push({
+      id: item.id,
+      kind: "timeline",
+      label: item.label,
+      subtitle: [item.timestamp, item.summary].filter(Boolean).join(" · "),
+      source: item.source,
+      route: item.route,
+      timelineId: item.id,
+      targetId: item.kind === "fact" && item.related.facts[0] ? `fact:${item.related.facts[0]}` : item.kind === "adr" && item.related.adrs[0] ? `adr:${item.related.adrs[0]}` : item.id,
+      text: searchText([item.id, item.kind, item.label, item.summary, item.timestamp, item.status, item.source, item.route, ...item.files, ...item.related.features, ...item.related.facts, ...item.related.adrs, ...item.related.sources]),
+    });
+  }
+
+  for (const group of groups) {
+    group.items.sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
+  }
+  return { groups };
 }
 
 function addEntity(graph: MutableGraph, label: string): string {
@@ -460,12 +718,35 @@ function truncate(input: string, max: number): string {
   return input.length <= max ? input : `${input.slice(0, max - 1)}...`;
 }
 
+function factAssertion(fact: FactRecord): string {
+  return `${fact.subject} ${fact.predicate} ${fact.object}`;
+}
+
+function timelineKindRank(kind: ReviewTimelineKind): number {
+  return { adr: 0, fact: 1, handoff: 2, failure: 3, strategy: 4 }[kind];
+}
+
+function searchText(values: unknown[]): string {
+  return values.flatMap(searchTokens).join(" ").toLowerCase();
+}
+
+function searchTokens(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value.flatMap(searchTokens);
+  if (typeof value === "object") return Object.values(value as Record<string, unknown>).flatMap(searchTokens);
+  return [String(value)];
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function arrayOfStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort();
 }
 
 function values(value: string | string[] | undefined): string[] {

@@ -1,0 +1,4 @@
+changelog-generation uses REVIEW_MODEL
+changelog-generation exposes CLI
+changelog-generation validates CHANGELOG_TEST
+changelog-generation protects existing-changelog

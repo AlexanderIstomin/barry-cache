@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
+import { buildChangelog, writeChangelog, type WriteChangelogResult } from "./core/changelog";
 import { finalizeProject, loadContext, resumeProject, routeTask, searchContext } from "./core/context";
 import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
@@ -88,6 +89,23 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         const summary = requiredString(parsed, "summary", commandUsage("finalize"), { status: [...finalizeStatuses] });
         const result = await finalizeProject({ repo, status, summary });
         print(result, json, formatFinalizeMessage(result));
+        break;
+      }
+      case "changelog": {
+        const since = optionalString(parsed, "since", commandUsage("changelog"));
+        const file = optionalString(parsed, "file", commandUsage("changelog"));
+        const rewrite = parsed.flags.get("rewrite") === true;
+        const write = parsed.flags.get("write") === true;
+        if (write && rewrite) throw new CliArgumentError("Use either --write or --rewrite, not both.", { usage: commandUsage("changelog") });
+        if (rewrite && since) throw new CliArgumentError("Use either --rewrite or --since, not both.", { usage: commandUsage("changelog") });
+        if (file && !write && !rewrite) throw new CliArgumentError("--file requires --write or --rewrite", { usage: commandUsage("changelog") });
+        if (write || rewrite) {
+          const result = await writeChangelog({ repo, file, since, rewrite });
+          print(result, json, formatChangelogWriteMessage(result));
+          break;
+        }
+        const result = await buildChangelog({ repo, since });
+        print(result, json, result.markdown.trimEnd());
         break;
       }
       case "adr": {
@@ -201,6 +219,13 @@ function optionalNumber(parsed: ParsedArgs, key: string, fallback: number, usage
   return parsedValue;
 }
 
+function optionalString(parsed: ParsedArgs, key: string, usageValue?: string): string | undefined {
+  const value = parsed.flags.get(key);
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new CliArgumentError(`--${key} requires a value`, { usage: usageValue });
+  return value;
+}
+
 function optionalChoice<const T extends readonly string[]>(parsed: ParsedArgs, key: string, choices: T, fallback: T[number], usageValue?: string): T[number] {
   const value = parsed.flags.get(key);
   if (value === undefined) return fallback;
@@ -298,6 +323,11 @@ function formatFinalizeMessage(result: Awaited<ReturnType<typeof finalizeProject
   ].join("\n");
 }
 
+function formatChangelogWriteMessage(result: WriteChangelogResult): string {
+  const action = result.mode === "created" ? "Wrote" : result.mode === "rewritten" ? "Rewrote" : "Appended";
+  return `${action} changelog at ${result.path}.`;
+}
+
 function formatInitMessage(result: InitResult): string {
   if (!result.dryRun) {
     const lines = [`Barry Cache init ${result.changed ? "changed files" : "already up to date"}.`];
@@ -369,6 +399,7 @@ function commandUsage(command: string): string | undefined {
     load: 'barry-cache load --route "..." [--json]',
     resume: 'barry-cache resume --task "..." [--json]',
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--json]',
+    changelog: "barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--file CHANGELOG.md] [--json]",
     import: "barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]",
     review: "barry-cache review [--port 8787] [--open] [--json]",
   };
@@ -390,6 +421,7 @@ Usage:
   barry-cache load --route "..." [--json]
   barry-cache resume --task "..." [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
+  barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--json]
   barry-cache adr new --title "..." [--status active] [--tags context,agents]
   barry-cache adr list [--json]
   barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]

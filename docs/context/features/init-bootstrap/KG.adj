@@ -1,0 +1,6 @@
+initProject patches package-json
+initProject creates context-scaffold
+initProject writes agent-instructions
+agent-instructions include adr-guidance
+self-hosting uses source-cli
+package-json provides barry-scripts

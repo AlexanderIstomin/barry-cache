@@ -41,13 +41,21 @@ describe("initProject", () => {
       expect(agents).toContain("bun run barry -- validate");
       expect(agents).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
       expect(agents).toContain("Finalize writes operational memory only.");
+      expect(agents).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
       expect(agents).toContain("run `bun install` first");
       expect(agents).not.toContain("barry-cache resume --task");
+      expect(agents).toContain("Decision records:");
+      expect(agents).toContain('bun run barry -- adr new --title "<decision>" --tags "<tags>"');
+      expect(agents).toContain('Add or update a `kind: "decision"` fact');
+      expect(agents).toContain("Do not create ADRs for routine bug fixes");
 
       const cursor = await readFile(join(repo, ".cursor/rules/barry-cache.mdc"), "utf8");
       expect(cursor).toContain("bun run barry -- resume --task");
       expect(cursor).toContain("bun run barry -- finalize --status success --summary");
       expect(cursor).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
+      expect(cursor).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
+      expect(cursor).toContain('bun run barry -- adr new --title "<decision>" --tags "<tags>"');
+      expect(cursor).toContain("Do not create ADRs for routine bug fixes");
 
       const maintenance = await readFile(join(repo, "docs/context/MAINTENANCE.md"), "utf8");
       expect(maintenance).toContain("Save an agent session");
@@ -101,6 +109,29 @@ describe("initProject", () => {
       expect(agents).toContain("pnpm run barry -- validate");
       expect(agents).toContain("run `pnpm install` first");
       expect(agents).not.toContain("barry-cache resume --task");
+    });
+  });
+
+  test("does not add barry-cache as a dependency when initializing barry-cache itself", async () => {
+    await withTempRepo(async (repo) => {
+      await writeFile(
+        join(repo, "package.json"),
+        JSON.stringify({
+          name: "barry-cache",
+          scripts: { test: "bun test" },
+          devDependencies: { typescript: "^6.0.3" },
+        }, null, 2),
+      );
+      await writeFile(join(repo, "bun.lock"), "");
+
+      await initProject({ repo, yes: true, agents: ["codex"] });
+
+      const packageJson = JSON.parse(await readFile(join(repo, "package.json"), "utf8"));
+      expect(packageJson.scripts.barry).toBe("bun run src/cli.ts");
+      expect(packageJson.scripts["barry:validate"]).toBe("bun run src/cli.ts validate");
+      expect(packageJson.scripts["barry:resume"]).toBe("bun run src/cli.ts resume");
+      expect(packageJson.scripts["barry:finalize"]).toBe("bun run src/cli.ts finalize");
+      expect(packageJson.devDependencies).toEqual({ typescript: "^6.0.3" });
     });
   });
 });

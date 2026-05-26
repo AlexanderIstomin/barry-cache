@@ -1,0 +1,8 @@
+review-server serves review-ui-assets
+review-server exposes review-model-api
+review-ui renders feature-memory-canvas
+review-ui renders timeline-canvas
+review-model builds grouped-search
+review-model builds implementation-timeline
+build copies review-ui-assets
+timeline-canvas implements timeline-canvas-adr

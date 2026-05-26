@@ -1,6 +1,6 @@
 {
   "name": "barry-cache",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Barry Cache remembers your repo.",
   "repository": {
     "type": "git",
@@ -18,12 +18,17 @@
     "dev": "bun run src/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/cli.ts --target=node --outdir=dist",
-    "prepack": "bun run build"
+    "build": "bun build src/cli.ts --target=node --outdir=dist && bun run scripts/copy-review-assets.ts",
+    "prepack": "bun run build",
+    "barry": "bun run src/cli.ts",
+    "barry:validate": "bun run src/cli.ts validate",
+    "barry:resume": "bun run src/cli.ts resume",
+    "barry:finalize": "bun run src/cli.ts finalize"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"
@@ -31,6 +36,10 @@
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "@types/node": "^25.8.0",
+    "@types/serve-handler": "^6.1.4",
     "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "serve-handler": "^6.1.7"
   }
 }
