@@ -8,6 +8,7 @@
     selectedId: null,
     selectedTreeUid: null,
     selectedTimelineId: null,
+    selectedTimelineArtifactId: null,
     expandedFactId: null,
     transitionExpandedFactId: null,
     showAllRelatedFacts: false,
@@ -18,12 +19,14 @@
     inspectorOpen: true,
     transform: { x: 44, y: 48, scale: 1 },
     visibleTree: null,
+    factItemsByKey: null,
     isPanning: false,
     panStart: null,
     panMoved: false,
     suppressNextTreeClick: false,
     treeAnimationFrame: null,
     hoveredRelatedFactKey: null,
+    expandedTimelineFacts: {},
     expandedTimelineArtifacts: {}
   };
 
@@ -35,7 +38,7 @@
     status: "Status"
   };
   var nodeColors = {
-    feature: "#6f5f32",
+    feature: "#5b0000",
     group: "#356174",
     fact: "#235347",
     adr: "#5f4b7a",
@@ -52,6 +55,7 @@
       })
       .then(function (model) {
         state.model = model;
+        state.factItemsByKey = null;
         initializeSelection(model);
         render();
       })
@@ -65,7 +69,7 @@
     var selected = features.find(function (feature) { return feature.slug === state.selectedFeature; }) || features[0] || null;
     state.selectedFeature = selected ? selected.slug : null;
     if (state.leftView === "timeline") {
-      if (!state.selectedTimelineId) {
+      if (!state.selectedTimelineId && !state.selectedTimelineArtifactId) {
         var firstTimelineItem = firstTimelineItemForCanvas();
         state.selectedTimelineId = firstTimelineItem ? firstTimelineItem.id : null;
       }
@@ -217,6 +221,7 @@
         state.selectedId = featureTreeId(slug);
         state.selectedTreeUid = featureTreeId(slug);
         state.selectedTimelineId = null;
+        state.selectedTimelineArtifactId = null;
         state.expandedFactId = null;
         state.transitionExpandedFactId = null;
         state.showAllRelatedFacts = false;
@@ -236,6 +241,7 @@
         state.selectedId = state.selectedFeature ? featureTreeId(state.selectedFeature) : null;
         state.selectedTreeUid = state.selectedId;
         state.selectedTimelineId = null;
+        state.selectedTimelineArtifactId = null;
         state.expandedFactId = null;
         state.transitionExpandedFactId = null;
         state.showAllRelatedFacts = false;
@@ -287,7 +293,7 @@
     state.showAllRelatedFacts = false;
     if (previousView !== state.leftView) state.transform = defaultTreeTransform();
     if (state.leftView === "timeline") {
-      if (!state.selectedTimelineId) {
+      if (!state.selectedTimelineId && !state.selectedTimelineArtifactId) {
         var firstTimelineItem = firstTimelineItemForCanvas();
         state.selectedTimelineId = firstTimelineItem ? firstTimelineItem.id : null;
       }
@@ -295,6 +301,7 @@
       state.selectedTreeUid = null;
     } else {
       state.selectedTimelineId = null;
+      state.selectedTimelineArtifactId = null;
       if (!state.selectedTreeUid) {
         var feature = currentFeature();
         if (feature) {
@@ -340,9 +347,7 @@
   function bindCanvas() {
     var canvas = document.getElementById("tree-canvas");
     canvas.addEventListener("wheel", function (event) {
-      event.preventDefault();
-      var rect = canvas.getBoundingClientRect();
-      zoomAt(event.deltaY > 0 ? 0.88 : 1.12, event.clientX - rect.left, event.clientY - rect.top);
+      handleCanvasWheel(canvas, event);
     }, { passive: false });
 
     canvas.addEventListener("pointerdown", function (event) {
@@ -398,6 +403,37 @@
     }
   }
 
+  function handleCanvasWheel(canvas, event) {
+    event.preventDefault();
+    cancelTreeAnimation();
+    var rect = canvas.getBoundingClientRect();
+    var delta = normalizedWheelDelta(event);
+    if (event.ctrlKey || event.metaKey) {
+      zoomAt(wheelZoomMultiplier(delta.y), event.clientX - rect.left, event.clientY - rect.top);
+      return;
+    }
+    panCanvasByWheelDelta(delta);
+  }
+
+  function panCanvasByWheelDelta(delta) {
+    if (!delta.x && !delta.y) return;
+    state.transform.x -= delta.x;
+    state.transform.y -= delta.y;
+    paintTreeFrame();
+  }
+
+  function normalizedWheelDelta(event) {
+    var unit = event.deltaMode === 1 ? 16 : (event.deltaMode === 2 ? 160 : 1);
+    return {
+      x: (event.deltaX || 0) * unit,
+      y: (event.deltaY || 0) * unit
+    };
+  }
+
+  function wheelZoomMultiplier(deltaY) {
+    return clamp(Math.exp(-deltaY * 0.0044), 0.88, 1.12);
+  }
+
   function treeUidFromEvent(event) {
     if (!event.target || !event.target.closest) return null;
     var node = event.target.closest("[data-tree-uid]");
@@ -415,8 +451,16 @@
       activateTimelineItem(node.timelineId);
       return;
     }
+    if (node.kind === "timelineArtifact" && node.id) {
+      activateTimelineArtifact(node.id);
+      return;
+    }
     if (node.kind === "timelineArtifactMore" && node.route) {
       toggleTimelineArtifacts(node.route);
+      return;
+    }
+    if (node.kind === "timelineFactMore" && node.route) {
+      toggleTimelineFacts(node.route);
       return;
     }
     if (node.kind === "timelineFeature" && node.route) {
@@ -546,6 +590,23 @@
       });
     });
 
+    Array.prototype.forEach.call(canvas.querySelectorAll("[data-timeline-fact-more-route]"), function (item) {
+      item.addEventListener("click", function (event) {
+        event.stopPropagation();
+        if (state.suppressNextTreeClick) {
+          state.suppressNextTreeClick = false;
+          return;
+        }
+        toggleTimelineFacts(item.getAttribute("data-timeline-fact-more-route"));
+      });
+      item.addEventListener("keydown", function (event) {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        toggleTimelineFacts(item.getAttribute("data-timeline-fact-more-route"));
+      });
+    });
+
   }
 
   function buildTimelineCanvas() {
@@ -604,10 +665,11 @@
       });
 
       var groupFacts = group.facts || [];
+      var visibleFacts = timelineVisibleFacts(group.route, groupFacts);
       var factWidth = Math.min(width - 28, 520);
       var factCursorY = factStartY;
       if (groupFacts.length > 0) addTimelineCanvasNode(timelineLaneHeaderNode("Implemented", group.route, x + 20, factStartY - 22, factWidth));
-      groupFacts.forEach(function (item) {
+      visibleFacts.forEach(function (item) {
         var factHeight = timelineFactNodeHeight(item, factWidth);
         addTimelineCanvasNode(timelineItemNode(item, {
           uid: timelineScopedUid(group.route, item.id, "fact"),
@@ -618,8 +680,13 @@
           x: x + 20,
           y: factCursorY
         }));
-        factCursorY += factHeight + 8;
+        factCursorY += factHeight + 12;
       });
+      var hiddenFacts = groupFacts.length - visibleFacts.length;
+      if (hiddenFacts > 0 || (timelineFactsExpanded(group.route) && groupFacts.length > timelineFactDisplayLimit())) {
+        addTimelineCanvasNode(timelineFactMoreNode(group.route, x + 20, factCursorY, factWidth, hiddenFacts));
+        factCursorY += 34;
+      }
 
       var groupArtifacts = timelineGroupArtifacts(group);
       var visibleArtifacts = timelineVisibleArtifacts(group.route, groupArtifacts);
@@ -637,7 +704,26 @@
         artifactBottomY += 30;
       }
 
-      var groupBottomY = Math.max(decisionCursorY, factCursorY, artifactBottomY);
+      var groupOperations = group.operations || [];
+      var operationStartY = artifactBottomY + (groupOperations.length > 0 ? 22 : 0);
+      var operationBottomY = operationStartY;
+      if (groupOperations.length > 0) {
+        addTimelineCanvasNode(timelineLaneHeaderNode("Activity", group.route, x + 20, operationStartY, Math.min(width - 28, 520)));
+        groupOperations.forEach(function (item, operationIndex) {
+          addTimelineCanvasNode(timelineItemNode(item, {
+            uid: timelineScopedUid(group.route, item.id, "operation"),
+            role: "operation",
+            route: group.route,
+            width: Math.min(width - 28, 520),
+            height: 44,
+            x: x + 20,
+            y: operationStartY + 34 + operationIndex * 56
+          }));
+        });
+        operationBottomY = operationStartY + 34 + groupOperations.length * 56;
+      }
+
+      var groupBottomY = Math.max(decisionCursorY, factCursorY, artifactBottomY, operationBottomY);
       maxY = Math.max(maxY, groupBottomY + 96);
       x += width + 92;
     });
@@ -650,10 +736,10 @@
         width: 260,
         height: 44,
         x: index * 286,
-        y: operationY
+        y: operationY + index * 56
       }));
     });
-    if (operations.length > 0) maxY = operationY + 86;
+    if (operations.length > 0) maxY = operationY + operations.length * 56 + 86;
 
     return { feature: null, nodes: nodes, edges: [], byUid: byUid, factCount: groups.length, guides: guides, maxY: maxY };
 
@@ -672,6 +758,7 @@
     if (node.kind === "timelineFeature") return renderTimelineFeatureBand(node);
     if (node.kind === "timelineArtifact") return renderTimelineArtifactNode(node);
     if (node.kind === "timelineArtifactMore") return renderTimelineArtifactMoreNode(node);
+    if (node.kind === "timelineFactMore") return renderTimelineFactMoreNode(node);
     if (node.role === "decision") return renderTimelineDecisionNode(node);
     if (node.role === "fact") return renderTimelineFactBullet(node);
     if (node.role === "operation") return renderTimelineOperationNode(node);
@@ -713,7 +800,8 @@
     var color = timelineNodeColor(node);
     var x = round(node.x);
     var y = round(node.y - node.height / 2);
-    var html = '<g class="' + classes + '" data-tree-uid="' + attr(node.uid) + '" data-timeline-id="' + attr(node.timelineId) + '" role="button" tabindex="0" aria-label="' + attr("Open " + timelineNodeTooltip(node)) + '">';
+    var factAttr = node.factKey ? ' data-fact-key="' + attr(node.factKey) + '"' : "";
+    var html = '<g class="' + classes + '" data-tree-uid="' + attr(node.uid) + '" data-timeline-id="' + attr(node.timelineId) + '"' + factAttr + ' role="button" tabindex="0" aria-label="' + attr("Open " + timelineNodeTooltip(node)) + '">';
     html += '<title>' + escapeHtml(timelineNodeTooltip(node)) + '</title>';
     html += '<rect x="' + x + '" y="' + y + '" width="' + node.width + '" height="' + node.height + '" rx="7" fill="' + attr(color) + '"></rect>';
     html += '<text class="timeline-node-date" x="' + round(node.x + 12) + '" y="' + round(node.y - 4) + '">' + escapeHtml(shortLabel(node.subtitle, timelineTextLimit(node.width, 26, 34, 62))) + '</text>';
@@ -729,7 +817,7 @@
     var classes = "tree-node timeline-node timeline-fact-bullet" + (selected ? " is-selected" : "") + (relatedHover ? " is-related-hover" : "") + (dimmed ? " is-dimmed" : "");
     var color = timelineNodeColor(node);
     var description = node.summary || node.label;
-    var html = '<g class="' + classes + '" data-tree-uid="' + attr(node.uid) + '" data-timeline-id="' + attr(node.timelineId) + '" role="button" tabindex="0" aria-label="' + attr("Open " + node.label + ": " + description) + '">';
+    var html = '<g class="' + classes + '" data-tree-uid="' + attr(node.uid) + '" data-timeline-id="' + attr(node.timelineId) + '" data-fact-key="' + attr(node.factKey || "") + '" role="button" tabindex="0" aria-label="' + attr("Open " + node.label + ": " + description) + '">';
     html += '<title>' + escapeHtml(timelineNodeTooltip(node)) + '</title>';
     html += '<rect class="timeline-hit-area" x="' + round(node.x - 4) + '" y="' + round(node.y - 13) + '" width="' + node.width + '" height="' + round(node.height + 8) + '" rx="5"></rect>';
     html += '<circle cx="' + round(node.x + 5) + '" cy="' + round(node.y - 4) + '" r="3.2" fill="' + attr(color) + '"></circle>';
@@ -739,14 +827,17 @@
   }
 
   function renderTimelineFactText(node, description) {
-    return '<foreignObject x="' + round(node.x + 18) + '" y="' + round(node.y - 12) + '" width="' + round(node.width - 24) + '" height="' + round(node.height + 4) + '">' +
+    return '<foreignObject x="' + round(node.x + 18) + '" y="' + round(node.y - 12) + '" width="' + round(node.width - 24) + '" height="' + round(node.height) + '">' +
       '<div xmlns="http://www.w3.org/1999/xhtml" class="timeline-fact-text">' + escapeHtml(description) + '</div>' +
       '</foreignObject>';
   }
 
   function renderTimelineArtifactNode(node) {
-    return '<g class="timeline-artifact-item' + (state.query.trim() && !node.matches ? " is-dimmed" : "") + '">' +
+    var selected = state.selectedTimelineArtifactId === node.id;
+    var dimmed = state.query.trim() && !node.matches && !selected;
+    return '<g class="timeline-artifact-item' + (selected ? " is-selected" : "") + (dimmed ? " is-dimmed" : "") + '" data-tree-uid="' + attr(node.uid) + '" data-timeline-artifact-id="' + attr(node.id) + '" role="button" tabindex="0" aria-label="' + attr("Open " + timelineArtifactTitle(node.label)) + '">' +
       '<title>' + escapeHtml(timelineArtifactTitle(node.label)) + '</title>' +
+      '<rect class="timeline-artifact-hit-area" x="' + round(node.x - 4) + '" y="' + round(node.y - 13) + '" width="' + node.width + '" height="24" rx="5"></rect>' +
       '<circle cx="' + round(node.x + 5) + '" cy="' + round(node.y - 1) + '" r="2.8"></circle>' +
       '<text x="' + round(node.x + 18) + '" y="' + round(node.y + 3) + '">' + escapeHtml(shortLabel(timelineArtifactLabel(node.label), timelineTextLimit(node.width, 28, 44, 76))) + '</text></g>';
   }
@@ -757,6 +848,15 @@
     return '<g class="timeline-artifact-more' + (state.query.trim() && !node.matches ? " is-dimmed" : "") + '" data-tree-uid="' + attr(node.uid) + '" data-timeline-artifact-more-route="' + attr(node.route) + '" role="button" tabindex="0" aria-label="' + attr(titleValue) + '">' +
       '<title>' + escapeHtml(titleValue) + '</title>' +
       '<rect class="timeline-artifact-more-hit-area" x="' + round(node.x - 4) + '" y="' + round(node.y - 13) + '" width="' + node.width + '" height="24" rx="5"></rect>' +
+      '<text x="' + round(node.x + 18) + '" y="' + round(node.y + 3) + '">' + escapeHtml(label) + '</text></g>';
+  }
+
+  function renderTimelineFactMoreNode(node) {
+    var titleValue = node.expanded ? "Show fewer implemented facts" : "Show all implemented facts";
+    var label = node.expanded ? "Show less" : "+" + node.hiddenCount + " more";
+    return '<g class="timeline-fact-more' + (state.query.trim() && !node.matches ? " is-dimmed" : "") + '" data-tree-uid="' + attr(node.uid) + '" data-timeline-fact-more-route="' + attr(node.route) + '" role="button" tabindex="0" aria-label="' + attr(titleValue) + '">' +
+      '<title>' + escapeHtml(titleValue) + '</title>' +
+      '<rect class="timeline-fact-more-hit-area" x="' + round(node.x - 4) + '" y="' + round(node.y - 13) + '" width="' + node.width + '" height="24" rx="5"></rect>' +
       '<text x="' + round(node.x + 18) + '" y="' + round(node.y + 3) + '">' + escapeHtml(label) + '</text></g>';
   }
 
@@ -771,7 +871,7 @@
     html += '<title>' + escapeHtml(timelineNodeTooltip(node)) + '</title>';
     html += '<rect x="' + x + '" y="' + y + '" width="' + node.width + '" height="' + node.height + '" rx="7" fill="' + attr(color) + '"></rect>';
     html += '<text class="timeline-node-date" x="' + round(node.x + 12) + '" y="' + round(node.y - 3) + '">' + escapeHtml(shortLabel(timelineNodeSubtitle(node.item || node), timelineTextLimit(node.width, 26, 32, 60))) + '</text>';
-    html += '<text x="' + round(node.x + 12) + '" y="' + round(node.y + 14) + '">' + escapeHtml(shortLabel(node.summary || node.label, timelineTextLimit(node.width, 26, 36, 64))) + '</text>';
+    html += '<text x="' + round(node.x + 12) + '" y="' + round(node.y + 14) + '">' + escapeHtml(shortLabel(node.summary || node.label, timelineTextLimit(node.width, 24, 36, 120))) + '</text>';
     html += '</g>';
     return html;
   }
@@ -824,6 +924,41 @@
   function timelineGroupArtifacts(group) {
     var events = (group.events || []).filter(function (item) { return item.kind !== "adr"; });
     return timelineArtifactsForItems(events);
+  }
+
+  function timelineVisibleFacts(route, facts) {
+    return timelineFactsExpanded(route) ? facts : facts.slice(0, timelineFactDisplayLimit());
+  }
+
+  function timelineFactsExpanded(route) {
+    return Boolean(route && state.expandedTimelineFacts[route]);
+  }
+
+  function toggleTimelineFacts(route) {
+    if (!route) return;
+    state.expandedTimelineFacts[route] = !state.expandedTimelineFacts[route];
+    drawCanvas();
+  }
+
+  function timelineFactDisplayLimit() {
+    return 20;
+  }
+
+  function timelineFactMoreNode(route, x, y, width, hiddenCount) {
+    return {
+      uid: "timeline:fact-more:" + route,
+      id: "timeline:fact-more:" + route,
+      kind: "timelineFactMore",
+      label: "implemented more",
+      route: route,
+      width: width,
+      height: 24,
+      x: x,
+      y: y,
+      hiddenCount: hiddenCount,
+      expanded: timelineFactsExpanded(route),
+      searchText: route + " implemented facts more"
+    };
   }
 
   function timelineVisibleArtifacts(route, artifacts) {
@@ -894,6 +1029,69 @@
     return String(artifact || "");
   }
 
+  function relatedFactKeysForArtifact(artifact, route) {
+    var keys = factKeysForSource(artifact);
+    timelineItemsForArtifactRoute(route).forEach(function (item) {
+      if (!timelineArtifactMatchesItem(artifact, item)) return;
+      keys = keys.concat(timelineRelatedFactKeys(item, route));
+    });
+    return unique(keys.filter(function (key) { return Boolean(factItemByKey(key)); }));
+  }
+
+  function timelineInspectorRelatedFactKeys(item) {
+    if (!item || item.kind === "fact") return [];
+    if (item.kind === "adr") return relatedFactKeysForTimelineAdr(item);
+    return unique(timelineRelatedFactKeys(item, item.route).filter(function (key) {
+      return Boolean(factItemByKey(key));
+    }));
+  }
+
+  function relatedFactKeysForTimelineAdr(item) {
+    var adrIds = item && item.related && item.related.adrs ? item.related.adrs : [];
+    if (adrIds.length === 0) return [];
+    var keys = [];
+    timelineItemsForCanvas().forEach(function (candidate) {
+      var candidateAdrs = candidate.related && candidate.related.adrs ? candidate.related.adrs : [];
+      if (candidate.kind !== "fact" || !hasIntersection(adrIds, candidateAdrs)) return;
+      keys = keys.concat(timelineRelatedFactKeys(candidate, candidate.route));
+    });
+    return unique(keys.filter(function (key) { return Boolean(factItemByKey(key)); }));
+  }
+
+  function timelineItemsForArtifactRoute(route) {
+    if (!route) return timelineItemsForCanvas();
+    var group = timelineFeatureGroups().find(function (candidate) { return candidate.route === route; });
+    return group && group.events ? group.events : timelineItemsForCanvas();
+  }
+
+  function timelineArtifactMatchesItem(artifact, item) {
+    return timelineArtifactsForItems([item]).some(function (source) {
+      return timelineArtifactSourceMatches(source, artifact);
+    });
+  }
+
+  function timelineArtifactSourceMatches(source, artifact) {
+    var left = stripSourceFragment(source);
+    var right = stripSourceFragment(artifact);
+    return left === right || left.endsWith("/" + right) || right.endsWith("/" + left);
+  }
+
+  function stripSourceFragment(source) {
+    return String(source || "").split("#")[0];
+  }
+
+  function timelineRelatedFactKeys(item, fallbackRoute) {
+    var related = item.related || {};
+    var routes = unique([item.route, fallbackRoute].concat(related.features || []).filter(Boolean));
+    var keys = [];
+    (related.facts || []).forEach(function (factId) {
+      routes.forEach(function (route) {
+        keys.push(factKeyFor(route, factId));
+      });
+    });
+    return keys;
+  }
+
   function timelineLaneHeaderNode(label, route, x, y, width) {
     return {
       uid: "timeline:header:" + route + ":" + slug(label),
@@ -913,7 +1111,8 @@
     var base = 268 + Math.max(group.events.length, group.facts.length) * 26;
     var textWidth = Math.max(
       timelineLongestTextWidth(group.decisions || [], 82, 58),
-      timelineLongestTextWidth(group.facts || [], 78, 72)
+      timelineLongestTextWidth(group.facts || [], 78, 72),
+      timelineLongestTextWidth(group.operations || [], 78, 72)
     );
     return clamp(Math.round(Math.max(base, textWidth)), 286, 640);
   }
@@ -940,13 +1139,40 @@
   }
 
   function timelineFactNodeHeight(item, width) {
-    return Math.max(20, timelineFactLineCount(item, width) * 16 + 4);
+    return Math.max(26, timelineFactLineCount(item, width) * 16 + 10);
   }
 
   function timelineFactLineCount(item, width) {
     var description = String((item && (item.summary || item.label)) || "");
     var charsPerLine = Math.max(22, Math.floor((width - 48) / 6.4));
-    return Math.max(1, Math.ceil(description.length / charsPerLine));
+    return timelineEstimatedWrappedLineCount(description, charsPerLine);
+  }
+
+  function timelineEstimatedWrappedLineCount(text, charsPerLine) {
+    var words = String(text || "").trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return 1;
+    var lineCount = 1;
+    var used = 0;
+    words.forEach(function (word) {
+      var wordLength = word.length;
+      if (word.length > charsPerLine) {
+        if (used > 0) {
+          lineCount += 1;
+          used = 0;
+        }
+        lineCount += Math.floor((wordLength - 1) / charsPerLine);
+        used = wordLength % charsPerLine;
+        return;
+      }
+      var nextUsed = used === 0 ? wordLength : used + 1 + wordLength;
+      if (nextUsed > charsPerLine) {
+        lineCount += 1;
+        used = wordLength;
+        return;
+      }
+      used = nextUsed;
+    });
+    return Math.max(1, lineCount);
   }
 
   function timelineOperations() {
@@ -959,6 +1185,7 @@
       var group = groups[groupIndex];
       if (group.decisions && group.decisions.length > 0) return group.decisions[0];
       if (group.facts && group.facts.length > 0) return group.facts[0];
+      if (group.operations && group.operations.length > 0) return group.operations[0];
     }
     var operations = timelineOperations();
     if (operations.length > 0) return operations[0];
@@ -1005,8 +1232,22 @@
   }
 
   function timelineNodeTooltip(node) {
-    var time = timelineTimeLabel(node.item || node);
-    return [node.subtitle, time ? "Time " + time : "", node.label, node.summary].filter(Boolean).join(" · ");
+    if (node.kind === "timelineFeature") return timelineFeatureTooltip(node);
+    var item = node.item || node;
+    return [timelineTooltipDateLabel(item), timelineKindLabel(item.kind), node.label, node.summary].filter(Boolean).join(" · ");
+  }
+
+  function timelineFeatureTooltip(node) {
+    var start = timelineTooltipDateLabel({ timestamp: node.startTime || node.start });
+    var end = timelineTooltipDateLabel({ timestamp: node.endTime || node.end });
+    var range = start && end && start !== end ? start + " - " + end : (start || end);
+    return [range, node.label].filter(Boolean).join(" · ");
+  }
+
+  function timelineTooltipDateLabel(item) {
+    var date = timelineDisplayDate(item && item.timestamp);
+    var time = timelineTimeLabel(item);
+    return date && time ? date + " " + time : date;
   }
 
   function timelineGroupSearchText(group) {
@@ -1014,6 +1255,7 @@
       .concat((group.events || []).map(timelineSearchText))
       .concat((group.decisions || []).map(timelineSearchText))
       .concat((group.facts || []).map(timelineSearchText))
+      .concat((group.operations || []).map(timelineSearchText))
       .join(" ");
   }
 
@@ -1461,6 +1703,7 @@
     state.showAllRelatedFacts = false;
     state.hoveredRelatedFactKey = null;
     state.selectedTimelineId = null;
+    state.selectedTimelineArtifactId = null;
     openInspector();
     state.selectedTreeUid = node.uid;
     if (node.kind === "group") {
@@ -1549,6 +1792,11 @@
   function renderInspector() {
     var inspector = document.getElementById("inspector");
     if (!inspector) return;
+    var timelineArtifact = selectedTimelineArtifactNode();
+    if (state.leftView === "timeline" && timelineArtifact) {
+      renderTimelineArtifactInspector(inspector, timelineArtifact);
+      return;
+    }
     var timelineItem = selectedTimelineItem();
     if (state.leftView === "timeline" && timelineItem) {
       renderTimelineInspector(inspector, timelineItem);
@@ -1624,6 +1872,7 @@
   }
 
   function renderTimelineInspector(inspector, item) {
+    var relatedFactKeys = timelineInspectorRelatedFactKeys(item);
     var rows = [
       ["Kind", title(item.kind)],
       ["When", item.timestamp || ""],
@@ -1632,16 +1881,46 @@
       ["Source", item.source || ""],
       ["Files", (item.files || []).join(", ")],
       ["ADRs", item.related && item.related.adrs ? item.related.adrs.join(", ") : ""],
-      ["Facts", item.related && item.related.facts ? item.related.facts.join(", ") : ""]
+      ["Facts", timelineInspectorFactRowValue(item)]
     ];
     inspector.innerHTML = inspectorShellHtml(
       item.label,
       item.summary,
       '<dl class="kv">' + rows.filter(function (row) { return row[1]; }).map(function (row) {
         return '<dt>' + escapeHtml(row[0]) + '</dt><dd>' + escapeHtml(row[1]) + '</dd>';
-      }).join("") + '</dl>'
+      }).join("") + '</dl>' +
+      relatedFactsHtml(relatedFactKeys)
     );
     bindInspectorControls(inspector);
+    bindRelatedFactButtons(inspector);
+  }
+
+  function timelineInspectorFactRowValue(item) {
+    if (isTimelineOperationItem(item)) return "";
+    return item && item.related && item.related.facts ? item.related.facts.join(", ") : "";
+  }
+
+  function isTimelineOperationItem(item) {
+    return Boolean(item && (item.kind === "handoff" || item.kind === "failure" || item.kind === "strategy"));
+  }
+
+  function renderTimelineArtifactInspector(inspector, node) {
+    var relatedFactKeys = relatedFactKeysForArtifact(node.label, node.route);
+    var rows = [
+      ["Type", "File"],
+      ["Route", node.route || ""],
+      ["Related facts", relatedFactKeys.length ? String(relatedFactKeys.length) : "None"]
+    ];
+    inspector.innerHTML = inspectorShellHtml(
+      timelineArtifactLabel(node.label),
+      node.label,
+      '<dl class="kv">' + rows.filter(function (row) { return row[1]; }).map(function (row) {
+        return '<dt>' + escapeHtml(row[0]) + '</dt><dd>' + escapeHtml(row[1]) + '</dd>';
+      }).join("") + '</dl>' +
+      relatedFactsHtml(relatedFactKeys)
+    );
+    bindInspectorControls(inspector);
+    bindRelatedFactButtons(inspector);
   }
 
   function inspectorShellHtml(titleValue, subtitleValue, bodyHtml) {
@@ -1660,15 +1939,15 @@
   function relatedFactsHtml(factKeys) {
     if (!factKeys || factKeys.length === 0) return "";
     var limit = 24;
-    var visibleKeys = visibleRelatedFactKeys();
+    var visibleKeys = visibleRelatedFactKeys(factKeys);
     var visibleCount = state.showAllRelatedFacts ? factKeys.length : Math.min(factKeys.length, limit);
     var remainingCount = factKeys.length - visibleCount;
     return '<div class="related-list"><div class="related-title">Related facts</div>' +
       visibleKeys.map(function (key) {
         var item = factItemByKey(key);
         var id = item ? item.fact.id : factIdFromKey(key);
-        var description = relatedFactTooltip(key);
-        return '<button class="' + relatedFactClass(key) + '" type="button" data-related-fact-id="' + attr(id) + '" data-related-fact-key="' + attr(key) + '" title="' + attr(description) + '" aria-label="' + attr(id + ": " + description) + '">' + escapeHtml(id) + '</button>';
+        var description = relatedFactTooltip(key, item);
+        return '<button class="' + relatedFactClass(key, item) + '" type="button" data-related-fact-id="' + attr(id) + '" data-related-fact-key="' + attr(key) + '" title="' + attr(description) + '" aria-label="' + attr(id + ": " + description) + '">' + escapeHtml(id) + '</button>';
       }).join("") +
       (remainingCount > 0 ? '<button class="related-chip related-more" type="button" data-related-show-all="true">+' + remainingCount + '</button>' : "") +
       '</div>';
@@ -1704,7 +1983,19 @@
   function setHoveredRelatedFactKey(factKey) {
     if (state.hoveredRelatedFactKey === factKey) return;
     state.hoveredRelatedFactKey = factKey;
-    drawCanvas();
+    updateRelatedFactHoverState(factKey);
+  }
+
+  function updateRelatedFactHoverState(factKey) {
+    setCanvasFactHover("[data-fact-key]", factKey, "data-fact-key", "is-related-hover");
+    setCanvasFactHover("[data-link-fact-key]", factKey, "data-link-fact-key", "is-hovered");
+    setCanvasFactHover("[data-related-fact-key]", factKey, "data-related-fact-key", "is-hovered");
+  }
+
+  function setCanvasFactHover(selector, factKey, attribute, className) {
+    Array.prototype.forEach.call(document.querySelectorAll(selector), function (element) {
+      element.classList.toggle(className, Boolean(factKey && element.getAttribute(attribute) === factKey));
+    });
   }
 
   function activateRelatedFact(factKey) {
@@ -1719,6 +2010,7 @@
     state.leftView = "features";
     state.showAllRelatedFacts = false;
     state.hoveredRelatedFactKey = null;
+    state.selectedTimelineArtifactId = null;
     openInspector();
     var previousFeature = state.selectedFeature;
     var sourceFactId = selectedFactId() || state.expandedFactId;
@@ -1749,16 +2041,26 @@
     state.selectedId = null;
     state.selectedTreeUid = null;
     state.selectedTimelineId = timelineIdForFact(item.route, item.fact.id);
+    state.selectedTimelineArtifactId = null;
     state.showAllRelatedFacts = false;
     state.hoveredRelatedFactKey = null;
     openInspector();
+    ensureTimelineFactVisible(item);
     drawCanvas();
-    centerTimelineFact(item);
+    centerTimelineFact(item, true);
     renderInspector();
     syncWorkspaceClass();
   }
 
-  function centerTimelineFact(item) {
+  function ensureTimelineFactVisible(item) {
+    if (!item || !item.route || !item.fact) return;
+    var group = timelineFeatureGroups().find(function (candidate) { return candidate.route === item.route; });
+    var facts = group && group.facts ? group.facts : [];
+    var index = facts.findIndex(function (candidate) { return candidate.id === item.id; });
+    if (index >= timelineFactDisplayLimit()) state.expandedTimelineFacts[item.route] = true;
+  }
+
+  function centerTimelineFact(item, animated) {
     var tree = state.visibleTree;
     if (!tree || !tree.nodes) return;
     var factKey = factKeyFor(item.route, item.fact.id);
@@ -1768,10 +2070,19 @@
     var rect = canvas.getBoundingClientRect();
     var width = Math.max(320, rect.width || 900);
     var height = Math.max(240, rect.height || 620);
-    var target = centeredTreeTransform(node, width, height, state.transform.scale);
+    var target = centeredTreeTransform(node, width, height, animated ? timelineTargetScale() : state.transform.scale);
+    if (animated) {
+      animateTreeTransform(target, node, width, height);
+      return;
+    }
     state.transform.x = target.x;
     state.transform.y = target.y;
+    state.transform.scale = target.scale;
     paintTreeFrame();
+  }
+
+  function timelineTargetScale() {
+    return clamp(Math.max(state.transform.scale, 1), 0.75, 1.35);
   }
 
   function timelineIdForFact(route, factId) {
@@ -1986,8 +2297,8 @@
     return [];
   }
 
-  function visibleRelatedFactKeys() {
-    var factKeys = selectedRelatedFactKeys();
+  function visibleRelatedFactKeys(factKeys) {
+    factKeys = factKeys || selectedRelatedFactKeys();
     if (state.showAllRelatedFacts) return factKeys;
     var visible = factKeys.slice(0, 24);
     if (state.hoveredRelatedFactKey && factKeys.indexOf(state.hoveredRelatedFactKey) >= 0 && visible.indexOf(state.hoveredRelatedFactKey) < 0) {
@@ -2059,6 +2370,11 @@
     return timelineItemById(state.selectedTimelineId);
   }
 
+  function selectedTimelineArtifactNode() {
+    if (state.leftView !== "timeline" || !state.selectedTimelineArtifactId || !state.visibleTree) return null;
+    return state.visibleTree.byUid[state.selectedTimelineArtifactId] || null;
+  }
+
   function selectedFactId() {
     return state.selectedId && state.selectedId.indexOf("fact:") === 0 ? state.selectedId.slice(5) : null;
   }
@@ -2121,18 +2437,29 @@
   }
 
   function factItemByKey(key) {
+    var item = factItemByKeyMap()[key];
+    if (item) return item;
     var parsed = parseFactKey(key);
-    if (!parsed) return null;
-    return state.model.facts.find(function (item) { return item.route === parsed.route && item.fact.id === parsed.id; }) || null;
+    if (!parsed || !parsed.route) return null;
+    return factItemByKeyMap()[factKeyFor(parsed.route, parsed.id)] || null;
   }
 
-  function relatedFactTooltip(key) {
-    var item = factItemByKey(key);
+  function factItemByKeyMap() {
+    if (state.factItemsByKey) return state.factItemsByKey;
+    state.factItemsByKey = (state.model && state.model.facts ? state.model.facts : []).reduce(function (map, item) {
+      map[factKeyFor(item.route, item.fact.id)] = item;
+      return map;
+    }, {});
+    return state.factItemsByKey;
+  }
+
+  function relatedFactTooltip(key, item) {
+    item = item || factItemByKey(key);
     return item ? featureLabelForRoute(item.route) + ": " + assertion(item.fact) : factIdFromKey(key);
   }
 
-  function relatedFactClass(key) {
-    var item = factItemByKey(key);
+  function relatedFactClass(key, item) {
+    item = item || factItemByKey(key);
     var isCurrentFeature = item && state.selectedFeature && item.route === state.selectedFeature;
     return "related-chip" + (isCurrentFeature ? " is-current-feature" : " is-cross-feature");
   }
@@ -2173,7 +2500,7 @@
   }
 
   function hasSelection() {
-    if (state.leftView === "timeline") return Boolean(selectedTimelineItem() || selectedGraphNode());
+    if (state.leftView === "timeline") return Boolean(selectedTimelineArtifactNode() || selectedTimelineItem() || selectedGraphNode());
     return Boolean(state.selectedTreeUid || selectedGraphNode());
   }
 
@@ -2327,10 +2654,29 @@
     cancelTreeAnimation();
     state.leftView = "timeline";
     state.selectedTimelineId = item.id;
+    state.selectedTimelineArtifactId = null;
     state.selectedId = null;
     state.selectedTreeUid = null;
     openInspector();
     render();
+  }
+
+  function activateTimelineArtifact(id) {
+    var node = state.visibleTree && state.visibleTree.byUid ? state.visibleTree.byUid[id] : null;
+    if (!node) return;
+    cancelTreeAnimation();
+    state.leftView = "timeline";
+    state.selectedFeature = node.route || state.selectedFeature;
+    state.selectedTimelineId = null;
+    state.selectedTimelineArtifactId = node.id;
+    state.selectedId = null;
+    state.selectedTreeUid = null;
+    state.showAllRelatedFacts = false;
+    state.hoveredRelatedFactKey = null;
+    openInspector();
+    drawCanvas();
+    renderInspector();
+    syncWorkspaceClass();
   }
 
   function activateTimelineFeature(route) {
@@ -2338,6 +2684,7 @@
     state.leftView = "timeline";
     state.selectedFeature = route;
     state.selectedTimelineId = null;
+    state.selectedTimelineArtifactId = null;
     state.selectedId = "feature:" + route;
     state.selectedTreeUid = null;
     openInspector();
@@ -2351,6 +2698,7 @@
     state.leftView = "features";
     if (route) state.selectedFeature = route;
     state.selectedTimelineId = null;
+    state.selectedTimelineArtifactId = null;
     var factMatch = id && id.match(/^fact:(.+)$/);
     if (factMatch && state.selectedFeature) {
       var target = selectFactInTree(state.selectedFeature, factMatch[1]);

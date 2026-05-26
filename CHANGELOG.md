@@ -34,3 +34,11 @@
 - Review timeline feature groups sort chronologically by first dated event so left-to-right canvas order follows implementation time with undated groups last
 - Review timeline feature groups preserve full timestamp sort keys while displaying compact dates so same-day feature ordering remains chronological
 - Timeline related fact chips highlight and navigate timeline facts without switching the left view to Features; clicks select and pan to the matching timeline node
+- Review canvas gestures support trackpad wheel panning, slower pinch zoom, date-adjacent tooltip times, and safer wrapped timeline fact row spacing
+- Review timeline related facts support 20-item implemented fact truncation, animated timeline related-fact centering, cached related fact lookup, and hover updates without full canvas redraws
+- Review operational timeline records link and render handoffs, failures, and strategies inside their related feature timeline groups by matching touched files to feature facts and ADR sources
+- Timeline artifact and handoff inspectors show related facts as the standard colored fact chips while selected artifact rows use text emphasis and handoff cards use wider summary text
+- Timeline decision lane deduplicates ADR-linked decision facts from decision cards and surfaces them as related fact chips on the selected ADR inspector instead
+- Review feature cards use a muted dusty rose background instead of the previous brown and green feature colors so feature cards remain distinct from fact nodes
+- Review operational timeline records infer and stack fileless handoffs by ranking summary evidence to a single strongest feature while standalone operation cards stack vertically instead of sharing one row
+- Timeline handoff inspector omits the raw Facts metadata row for handoff, failure, and strategy records because related facts are already shown as colored chips

@@ -173,6 +173,9 @@ describe("buildReviewModel", () => {
       }));
       expect(model.timeline[2]?.related.adrs).toContain("ADR-0001");
       expect(model.timeline[2]?.related.sources).toContain("src/runtime/clock.ts");
+      const handoff = model.timeline.find((item) => item.kind === "handoff");
+      expect(handoff?.related.features).toContain("renderer-runtime");
+      expect(handoff?.related.adrs).toContain("ADR-0001");
 
       expect(model.timelineView.features).toContainEqual(expect.objectContaining({
         route: "renderer-runtime",
@@ -181,18 +184,98 @@ describe("buildReviewModel", () => {
         end: expect.stringMatching(/^2026-05-/),
         decisions: expect.arrayContaining([
           expect.objectContaining({ id: "timeline:adr:ADR-0001" }),
-          expect.objectContaining({ id: "timeline:fact:renderer-runtime:RR002" }),
         ]),
         facts: expect.arrayContaining([
           expect.objectContaining({ id: "timeline:fact:renderer-runtime:RR001" }),
         ]),
+        operations: expect.arrayContaining([
+          expect.objectContaining({ kind: "handoff", summary: "Implemented renderer transport clock." }),
+        ]),
       }));
-      expect(model.timelineView.operations).toContainEqual(expect.objectContaining({
+      const rendererTimelineGroup = model.timelineView.features.find((feature) => feature.route === "renderer-runtime");
+      expect(rendererTimelineGroup?.decisions).not.toContainEqual(expect.objectContaining({
+        id: "timeline:fact:renderer-runtime:RR002",
+      }));
+      expect(model.timelineView.operations).not.toContainEqual(expect.objectContaining({
         kind: "handoff",
         summary: "Implemented renderer transport clock.",
       }));
       expect(model.timelineView.ticks).toContain("2026-05-16");
       expect(model.timelineView.ticks).toContain("2026-05-18");
+    });
+  });
+
+  test("links fileless handoffs to feature timelines from summary evidence", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      await addRendererPack(repo);
+      await finalizeProject({
+        repo,
+        status: "success",
+        summary: "Refined transport clock frame scheduler handoff.",
+      });
+
+      const model = await buildReviewModel({ repo });
+
+      const handoff = model.timeline.find((item) => item.kind === "handoff");
+      expect(handoff?.files).toEqual([]);
+      expect(handoff?.route).toBe("renderer-runtime");
+      expect(handoff?.related.features).toEqual(["renderer-runtime"]);
+      expect(handoff?.related.facts).toContain("RR002");
+
+      const rendererTimelineGroup = model.timelineView.features.find((feature) => feature.route === "renderer-runtime");
+      expect(rendererTimelineGroup?.operations).toContainEqual(expect.objectContaining({
+        kind: "handoff",
+        summary: "Refined transport clock frame scheduler handoff.",
+      }));
+      expect(model.timelineView.operations).not.toContainEqual(expect.objectContaining({
+        kind: "handoff",
+        summary: "Refined transport clock frame scheduler handoff.",
+      }));
+    });
+  });
+
+  test("does not attach fileless handoffs to weaker generic feature matches", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      await addTimelinePack(repo, "review-interface", "Review Interface", [
+        {
+          id: "REV001",
+          subject: "Review feature cards",
+          predicate: "use",
+          object: "muted dusty rose color",
+          src: ["F01"],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-26T16:20:00.000Z",
+        },
+      ]);
+      await addTimelinePack(repo, "changelog-generation", "Changelog Generation", [
+        {
+          id: "CLG001",
+          subject: "Changelog review",
+          predicate: "lists",
+          object: "feature files",
+          src: ["F01"],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-20",
+        },
+      ]);
+      await finalizeProject({
+        repo,
+        status: "success",
+        summary: "Changed review feature card color from greenish sage to muted dusty rose.",
+      });
+
+      const model = await buildReviewModel({ repo });
+      const handoff = model.timeline.find((item) => item.kind === "handoff");
+
+      expect(handoff?.route).toBe("review-interface");
+      expect(handoff?.related.features).toEqual(["review-interface"]);
+      expect(handoff?.related.facts).toEqual(["REV001"]);
+      expect(model.timelineView.features.find((feature) => feature.route === "review-interface")?.operations).toHaveLength(1);
+      expect(model.timelineView.features.find((feature) => feature.route === "changelog-generation")?.operations).toHaveLength(0);
     });
   });
 

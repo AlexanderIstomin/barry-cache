@@ -80,6 +80,7 @@ export interface ReviewTimelineFeature {
   endTime: string;
   decisions: ReviewTimelineItem[];
   facts: ReviewTimelineItem[];
+  operations: ReviewTimelineItem[];
   events: ReviewTimelineItem[];
 }
 
@@ -163,6 +164,8 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
   timeline.push(...await addOperationalRecords({
     graph,
     repo,
+    features,
+    adrs,
     kind: "handoff",
     path: ".context-state/handoffs/handoffs.jsonl",
     warnings,
@@ -170,6 +173,8 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
   timeline.push(...await addOperationalRecords({
     graph,
     repo,
+    features,
+    adrs,
     kind: "failure",
     path: ".context-state/failures/failure_patterns.jsonl",
     warnings,
@@ -177,6 +182,8 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
   timeline.push(...await addOperationalRecords({
     graph,
     repo,
+    features,
+    adrs,
     kind: "failure",
     path: ".context-state/failures/failures.jsonl",
     warnings,
@@ -184,6 +191,8 @@ export async function buildReviewModel({ repo }: { repo: string }): Promise<Revi
   timeline.push(...await addOperationalRecords({
     graph,
     repo,
+    features,
+    adrs,
     kind: "strategy",
     path: ".context-state/strategies/strategies.jsonl",
     warnings,
@@ -420,6 +429,8 @@ function addKgEdges(graph: MutableGraph, feature: FeaturePack): void {
 async function addOperationalRecords(options: {
   graph: MutableGraph;
   repo: string;
+  features: FeaturePack[];
+  adrs: AdrRecord[];
   kind: ReviewTimelineKind;
   path: string;
   warnings: string[];
@@ -447,6 +458,25 @@ async function addOperationalRecords(options: {
         meta: { type: "file" },
       });
     }
+    const related = operationalRecordLinks(options.repo, files, summary, options.features, options.adrs);
+    for (const feature of related.features) {
+      addEdge(options.graph, {
+        source: id,
+        target: `feature:${feature}`,
+        kind: "related-to",
+        label: "feature",
+        meta: { type: "operation-feature" },
+      });
+    }
+    for (const adr of related.adrs) {
+      addEdge(options.graph, {
+        source: id,
+        target: `adr:${adr}`,
+        kind: "related-to",
+        label: "ADR",
+        meta: { type: "operation-adr" },
+      });
+    }
     const item: ReviewTimelineItem = {
       id,
       kind: options.kind,
@@ -455,13 +485,15 @@ async function addOperationalRecords(options: {
       source: `${options.path}#L${index + 1}`,
       files,
       related: {
-        features: [],
-        facts: [],
-        adrs: [],
+        features: related.features,
+        facts: related.facts,
+        adrs: related.adrs,
         sources: files,
       },
       meta: record,
     };
+    const inferredRoute = related.features.length === 1 ? related.features[0] : undefined;
+    if (inferredRoute) item.route = inferredRoute;
     const timestamp = stringValue(record.updated_at);
     const status = stringValue(record.status);
     if (timestamp) item.timestamp = timestamp;
@@ -491,6 +523,163 @@ async function readJsonl(path: string, displayPath: string, warnings: string[]):
   return records;
 }
 
+function operationalRecordLinks(repo: string, files: string[], summary: string, features: FeaturePack[], adrs: AdrRecord[]): ReviewTimelineItem["related"] {
+  const featureSet = new Set<string>();
+  const factSet = new Set<string>();
+  const adrSet = new Set<string>();
+  for (const file of files) {
+    for (const adr of adrs) {
+      if (adrMatchesSource(adr, file)) adrSet.add(adr.id);
+    }
+  }
+  for (const feature of features) {
+    const featureDir = rel(repo, feature.dir);
+    if (files.some((file) => sourceMatches(file, featureDir) || stripSourceFragment(file).startsWith(`${featureDir}/`))) {
+      featureSet.add(feature.slug);
+    }
+    const sourceMap = parseIdMap(feature.idmap);
+    for (const fact of feature.facts) {
+      const resolvedSources = fact.src.map((source) => sourceMap.get(source) ?? source);
+      const rawAndResolvedSources = unique([...fact.src, ...resolvedSources]);
+      if (!files.some((file) => rawAndResolvedSources.some((source) => sourceMatches(source, file)))) continue;
+      featureSet.add(feature.slug);
+      factSet.add(fact.id);
+      for (const source of resolvedSources) {
+        const adr = adrs.find((item) => adrMatchesSource(item, source));
+        if (adr) adrSet.add(adr.id);
+      }
+    }
+  }
+  if (featureSet.size === 0) addSummaryOperationalLinks(summary, features, adrs, featureSet, factSet, adrSet);
+  return {
+    features: unique([...featureSet]),
+    facts: unique([...factSet]),
+    adrs: unique([...adrSet]),
+    sources: files,
+  };
+}
+
+function addSummaryOperationalLinks(
+  summary: string,
+  features: FeaturePack[],
+  adrs: AdrRecord[],
+  featureSet: Set<string>,
+  factSet: Set<string>,
+  adrSet: Set<string>,
+): void {
+  const tokens = operationalSummaryTokens(summary);
+  if (tokens.length === 0) return;
+
+  const candidates = features
+    .map((feature) => summaryFeatureCandidate(feature, tokens, adrs))
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score || a.feature.slug.localeCompare(b.feature.slug));
+  const selected = candidates[0];
+  if (selected) {
+    featureSet.add(selected.feature.slug);
+    for (const factId of selected.factIds) factSet.add(factId);
+    for (const adrId of selected.adrIds) adrSet.add(adrId);
+  }
+
+  for (const adr of adrs) {
+    const adrScore = operationalTokenScore(tokens, searchText([adr.id, adr.title, adr.path, adr.tags]));
+    if (adrScore >= 2) adrSet.add(adr.id);
+  }
+}
+
+function summaryFeatureCandidate(feature: FeaturePack, tokens: string[], adrs: AdrRecord[]): {
+  feature: FeaturePack;
+  score: number;
+  factIds: string[];
+  adrIds: string[];
+} {
+  const sourceMap = parseIdMap(feature.idmap);
+  const factIds: string[] = [];
+  const adrIds: string[] = [];
+  let maxFactScore = 0;
+  let totalFactScore = 0;
+  for (const fact of feature.facts) {
+    const resolvedSources = fact.src.map((source) => sourceMap.get(source) ?? source);
+    const score = operationalTokenScore(tokens, searchText([
+      fact.id,
+      fact.subject,
+      fact.predicate,
+      fact.object,
+      fact.status,
+      fact.kind,
+      fact.updated_at,
+      fact.tags ?? [],
+      fact.src,
+      resolvedSources,
+    ]));
+    if (score < 2) continue;
+    factIds.push(fact.id);
+    maxFactScore = Math.max(maxFactScore, score);
+    totalFactScore += score;
+    for (const source of resolvedSources) {
+      const adr = adrs.find((item) => adrMatchesSource(item, source));
+      if (adr) adrIds.push(adr.id);
+    }
+  }
+  if (factIds.length > 0) {
+    return {
+      feature,
+      score: maxFactScore * 100 + totalFactScore,
+      factIds: unique(factIds),
+      adrIds: unique(adrIds),
+    };
+  }
+
+  const featureScore = operationalTokenScore(tokens, searchText([
+    feature.slug,
+    feature.readme,
+    feature.idmap,
+    feature.graph,
+  ]));
+  return {
+    feature,
+    score: featureScore >= 3 ? featureScore : 0,
+    factIds: [],
+    adrIds: [],
+  };
+}
+
+function operationalSummaryTokens(summary: string): string[] {
+  return unique(summary.toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map(normalizeOperationalToken)
+    .filter((token) => token.length >= 3));
+}
+
+function normalizeOperationalToken(token: string): string {
+  if (token.length > 6 && token.endsWith("ing")) return token.slice(0, -3);
+  if (token.length > 5 && token.endsWith("ed")) return token.slice(0, -2);
+  if (token.length > 5 && token.endsWith("es")) return token.slice(0, -2);
+  if (token.length > 4 && token.endsWith("s")) return token.slice(0, -1);
+  return token;
+}
+
+function operationalTokenScore(tokens: string[], text: string): number {
+  const textTokens = operationalSummaryTokens(text);
+  return tokens.reduce((score, token) => {
+    return score + (textTokens.some((candidate) => operationalTokensMatch(token, candidate)) ? 1 : 0);
+  }, 0);
+}
+
+function operationalTokensMatch(left: string, right: string): boolean {
+  return left === right || (left.length >= 5 && right.startsWith(left)) || (right.length >= 5 && left.startsWith(right));
+}
+
+function sourceMatches(source: string, file: string): boolean {
+  const left = stripSourceFragment(source);
+  const right = stripSourceFragment(file);
+  return left === right || left.endsWith(`/${right}`) || right.endsWith(`/${left}`);
+}
+
+function stripSourceFragment(source: string): string {
+  return source.split("#")[0] ?? source;
+}
+
 function buildTimelineView(features: FeaturePack[], timeline: ReviewTimelineItem[]): ReviewTimelineView {
   const adrById = new Map(
     timeline
@@ -499,15 +688,22 @@ function buildTimelineView(features: FeaturePack[], timeline: ReviewTimelineItem
   );
   const factEvents = timeline.filter((item) => item.kind === "fact");
   const operations = timeline.filter((item) => item.kind === "handoff" || item.kind === "failure" || item.kind === "strategy");
+  const groupedOperationIds = new Set<string>();
   const groupedFeatures = features.map((feature) => {
     const featureFacts = factEvents.filter((item) => item.route === feature.slug || item.related.features.includes(feature.slug));
-    const linkedAdrs = unique(featureFacts.flatMap((item) => item.related.adrs))
+    const linkedAdrIds = unique(featureFacts.flatMap((item) => item.related.adrs));
+    const linkedAdrs = linkedAdrIds
       .map((adrId) => adrById.get(adrId))
       .filter((item): item is ReviewTimelineItem => Boolean(item));
+    const featureOperations = sortTimelineItems(operations.filter((item) =>
+      item.related.features.includes(feature.slug) || hasStringIntersection(item.related.adrs, linkedAdrIds)
+    ));
+    for (const operation of featureOperations) groupedOperationIds.add(operation.id);
     const decisionFacts = featureFacts.filter((item) => stringValue(item.meta.kind) === "decision");
-    const decisions = sortTimelineItems([...linkedAdrs, ...decisionFacts]);
+    const standaloneDecisionFacts = decisionFacts.filter((item) => !hasStringIntersection(item.related.adrs, linkedAdrIds));
+    const decisions = sortTimelineItems([...linkedAdrs, ...standaloneDecisionFacts]);
     const facts = sortTimelineItems(featureFacts.filter((item) => stringValue(item.meta.kind) === "implemented"));
-    const events = sortTimelineItems([...featureFacts, ...linkedAdrs]);
+    const events = sortTimelineItems([...featureFacts, ...linkedAdrs, ...featureOperations]);
     const timestamps = events.map((item) => item.timestamp).filter((value): value is string => Boolean(value));
     const preciseTimestamps = timestamps.filter(hasTimelineTime);
     const dates = timestamps.map((timestamp) => timelineDate(timestamp)).filter((value): value is string => Boolean(value));
@@ -520,6 +716,7 @@ function buildTimelineView(features: FeaturePack[], timeline: ReviewTimelineItem
       endTime: preciseTimestamps[preciseTimestamps.length - 1] ?? timestamps[timestamps.length - 1] ?? "",
       decisions,
       facts,
+      operations: featureOperations,
       events,
     };
   }).sort(compareTimelineFeatures);
@@ -527,7 +724,7 @@ function buildTimelineView(features: FeaturePack[], timeline: ReviewTimelineItem
   return {
     ticks: unique(timeline.map((item) => timelineDate(item.timestamp)).filter((value): value is string => Boolean(value))),
     features: groupedFeatures,
-    operations,
+    operations: operations.filter((item) => !groupedOperationIds.has(item.id)),
   };
 }
 
@@ -747,6 +944,11 @@ function arrayOfStrings(value: unknown): string[] {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
+}
+
+function hasStringIntersection(left: string[], right: string[]): boolean {
+  const rightSet = new Set(right);
+  return left.some((value) => rightSet.has(value));
 }
 
 function values(value: string | string[] | undefined): string[] {
