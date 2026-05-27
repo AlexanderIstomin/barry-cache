@@ -11,3 +11,4 @@
 - `COPY_REVIEW_ASSETS`: scripts/copy-review-assets.ts
 - `PKG`: package.json
 - `TIMELINE_CANVAS_ADR`: docs/context/adrs/ADR-0003-render-review-timeline-as-canvas-nodes.md
+- `VALIDATION_FAILURE_ADR`: docs/context/adrs/ADR-0004-record-validation-failures-as-operational-contradictions.md

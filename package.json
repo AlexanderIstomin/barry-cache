@@ -1,6 +1,6 @@
 {
   "name": "barry-cache",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Barry Cache remembers your repo.",
   "repository": {
     "type": "git",
@@ -23,7 +23,8 @@
     "barry": "bun run src/cli.ts",
     "barry:validate": "bun run src/cli.ts validate",
     "barry:resume": "bun run src/cli.ts resume",
-    "barry:finalize": "bun run src/cli.ts finalize"
+    "barry:finalize": "bun run src/cli.ts finalize",
+    "barry:failure": "bun run src/cli.ts failure"
   },
   "files": [
     "dist",

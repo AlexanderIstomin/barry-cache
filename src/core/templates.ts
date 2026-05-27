@@ -53,12 +53,19 @@ ${commandPrefix} validate
 Before handing off substantial work, record factual evidence:
 
 \`\`\`bash
-${commandPrefix} finalize --status success --summary "<summary>"
+${commandPrefix} finalize --status success --summary "<summary>" --files "path-a,path-b"
+\`\`\`
+
+When user validation shows previous work is broken, record the contradiction before or while fixing it:
+
+\`\`\`bash
+${commandPrefix} failure record --summary "<what failed>" --expected "<expected behavior>" --actual "<observed behavior>" --challenges "<handoff-or-fact-id>"
 \`\`\`
 
 Memory policy:
 
 - Finalize writes operational memory only.
+- Failure records write operational validation memory only and should challenge stale handoffs or facts instead of rewriting history.
 - Do not claim Barry canonical memory is updated unless \`docs/context/\` changed.
 - If a task adds durable implementation behavior, add or update source-backed facts in \`docs/context/features/*/FACTS.jsonl\` and run \`${commandPrefix} validate\`.
 - Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts, so same-day feature order is preserved in review timelines.
@@ -122,16 +129,23 @@ Save this session to Barry Cache.
 
 Rules:
 1. Record the session outcome with barry-cache finalize.
-2. Promote only source-backed implementation facts into docs/context/features/*/FACTS.jsonl.
-3. Put uncertain notes, blockers, and next steps in operational memory, not canonical facts.
-4. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
-5. Run barry-cache validate before finishing.
+2. If user validation showed previous work was wrong, first record it with barry-cache failure record and link the follow-up finalize with --fixes.
+3. Promote only source-backed implementation facts into docs/context/features/*/FACTS.jsonl.
+4. Put uncertain notes, blockers, and next steps in operational memory, not canonical facts.
+5. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
+6. Run barry-cache validate before finishing.
 \`\`\`
 
 Recommended command for the session outcome:
 
 \`\`\`bash
-barry-cache finalize --status success --summary "<what changed or what was learned>"
+barry-cache finalize --status success --summary "<what changed or what was learned>" --files "path-a,path-b"
+\`\`\`
+
+Recommended command when user validation contradicts a previous handoff or fact:
+
+\`\`\`bash
+barry-cache failure record --summary "<what failed>" --expected "<expected behavior>" --actual "<observed behavior>" --challenges "<handoff-or-fact-id>"
 \`\`\`
 `;
 
@@ -227,5 +241,20 @@ export const strategySchema = {
 export const failureSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Barry Cache failure",
-  "type": "object"
+  "type": "object",
+  "required": ["id", "kind", "observed_at", "updated_at", "status", "summary", "expected", "actual", "reporter", "files", "challenges", "fixes"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^failure-.+" },
+    "kind": { "enum": ["validation_failure"] },
+    "observed_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "status": { "enum": ["open", "fixed", "wontfix"] },
+    "summary": { "type": "string", "minLength": 1 },
+    "expected": { "type": "string", "minLength": 1 },
+    "actual": { "type": "string", "minLength": 1 },
+    "reporter": { "type": "string", "minLength": 1 },
+    "files": { "type": "array", "items": { "type": "string" } },
+    "challenges": { "type": "array", "items": { "type": "string" } },
+    "fixes": { "type": "array", "items": { "type": "string" } }
+  }
 };

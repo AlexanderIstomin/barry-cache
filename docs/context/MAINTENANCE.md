@@ -18,14 +18,21 @@ Save this session to Barry Cache.
 
 Rules:
 1. Record the session outcome with barry-cache finalize.
-2. Promote only source-backed implementation facts into docs/context/features/*/FACTS.jsonl.
-3. Put uncertain notes, blockers, and next steps in operational memory, not canonical facts.
-4. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
-5. Run barry-cache validate before finishing.
+2. If user validation showed previous work was wrong, first record it with barry-cache failure record and link the follow-up finalize with --fixes.
+3. Promote only source-backed implementation facts into docs/context/features/*/FACTS.jsonl.
+4. Put uncertain notes, blockers, and next steps in operational memory, not canonical facts.
+5. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
+6. Run barry-cache validate before finishing.
 ```
 
 Recommended command for the session outcome:
 
 ```bash
-barry-cache finalize --status success --summary "<what changed or what was learned>"
+barry-cache finalize --status success --summary "<what changed or what was learned>" --files "path-a,path-b"
+```
+
+Recommended command when user validation contradicts a previous handoff or fact:
+
+```bash
+barry-cache failure record --summary "<what failed>" --expected "<expected behavior>" --actual "<observed behavior>" --challenges "<handoff-or-fact-id>"
 ```

@@ -68,6 +68,17 @@ describe("cli argument help", () => {
     });
   });
 
+  test("failure record without actual behavior shows command usage", async () => {
+    await withTempRepo(async (repo) => {
+      const result = await runCli(repo, ["failure", "record", "--summary", "Broken export", "--expected", "Export succeeds"]);
+
+      expect(result.stdout).toBe("");
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("Missing required --actual");
+      expect(result.stderr).toContain("barry-cache failure record --summary");
+    });
+  });
+
   test("json argument errors stay machine readable", async () => {
     await withTempRepo(async (repo) => {
       const result = await runCli(repo, ["import", "--source", "--json"]);

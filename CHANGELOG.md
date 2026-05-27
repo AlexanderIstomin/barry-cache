@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-05-27
+
+### Review Interface
+- Review timeline validation failures surface validation failure events and follow-up handoff fix links through timeline related challenge and fix arrays while grouping linked failures with feature operations
+
+
 ## 2026-05-26
 
 ### Changelog Generation

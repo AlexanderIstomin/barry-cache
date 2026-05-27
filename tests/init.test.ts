@@ -32,6 +32,7 @@ describe("initProject", () => {
       expect(packageJson.scripts["barry:validate"]).toBe("barry-cache validate");
       expect(packageJson.scripts["barry:resume"]).toBe("barry-cache resume");
       expect(packageJson.scripts["barry:finalize"]).toBe("barry-cache finalize");
+      expect(packageJson.scripts["barry:failure"]).toBe("barry-cache failure");
       expect(packageJson.scripts.context).toBeUndefined();
       expect(packageJson.scripts["context:validate"]).toBeUndefined();
 
@@ -39,8 +40,10 @@ describe("initProject", () => {
       expect(agents).toContain("Barry Cache");
       expect(agents).toContain("bun run barry -- resume --task");
       expect(agents).toContain("bun run barry -- validate");
+      expect(agents).toContain("bun run barry -- failure record --summary");
       expect(agents).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
       expect(agents).toContain("Finalize writes operational memory only.");
+      expect(agents).toContain("Failure records write operational validation memory only");
       expect(agents).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
       expect(agents).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
       expect(agents).toContain("run `bun install` first");
@@ -53,7 +56,9 @@ describe("initProject", () => {
       const cursor = await readFile(join(repo, ".cursor/rules/barry-cache.mdc"), "utf8");
       expect(cursor).toContain("bun run barry -- resume --task");
       expect(cursor).toContain("bun run barry -- finalize --status success --summary");
+      expect(cursor).toContain("bun run barry -- failure record --summary");
       expect(cursor).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
+      expect(cursor).toContain("Failure records write operational validation memory only");
       expect(cursor).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
       expect(cursor).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
       expect(cursor).toContain('bun run barry -- adr new --title "<decision>" --tags "<tags>"');
@@ -62,6 +67,8 @@ describe("initProject", () => {
       const maintenance = await readFile(join(repo, "docs/context/MAINTENANCE.md"), "utf8");
       expect(maintenance).toContain("Save an agent session");
       expect(maintenance).toContain("barry-cache finalize");
+      expect(maintenance).toContain("barry-cache failure record");
+      expect(maintenance).toContain("link the follow-up finalize with --fixes");
 
       const validation = await validateProject({ repo });
       expect(validation.ok).toBe(true);
@@ -133,6 +140,7 @@ describe("initProject", () => {
       expect(packageJson.scripts["barry:validate"]).toBe("bun run src/cli.ts validate");
       expect(packageJson.scripts["barry:resume"]).toBe("bun run src/cli.ts resume");
       expect(packageJson.scripts["barry:finalize"]).toBe("bun run src/cli.ts finalize");
+      expect(packageJson.scripts["barry:failure"]).toBe("bun run src/cli.ts failure");
       expect(packageJson.devDependencies).toEqual({ typescript: "^6.0.3" });
     });
   });

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createAdr } from "../src/core/adr";
-import { finalizeProject } from "../src/core/context";
+import { finalizeProject, recordValidationFailure } from "../src/core/context";
 import { initProject } from "../src/core/init";
 import { buildReviewModel } from "../src/core/review-model";
 import { withTempRepo } from "./helpers";
@@ -231,6 +231,109 @@ describe("buildReviewModel", () => {
       expect(model.timelineView.operations).not.toContainEqual(expect.objectContaining({
         kind: "handoff",
         summary: "Refined transport clock frame scheduler handoff.",
+      }));
+    });
+  });
+
+  test("keeps ADR cards out of feature decision lanes when only implemented facts cite them", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      const adr = await createAdr({
+        repo,
+        title: "Record validation failures as operational contradictions",
+        date: "2026-05-27",
+        tags: ["validation", "failures"],
+      });
+      await addTimelinePack(repo, "init-bootstrap", "Init Bootstrap", [
+        {
+          id: "INIT001",
+          subject: "Barry validation failure protocol",
+          predicate: "records",
+          object: "user-reported failed validation as operational contradiction records",
+          src: [adr.path],
+          status: "active",
+          kind: "decision",
+          updated_at: "2026-05-27T10:35:15.000Z",
+        },
+      ]);
+      await addTimelinePack(repo, "review-interface", "Review Interface", [
+        {
+          id: "REV001",
+          subject: "Review timeline validation failures",
+          predicate: "surface",
+          object: "validation failure events and follow-up handoff fix links",
+          src: [adr.path],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-27T10:35:16.000Z",
+        },
+      ]);
+
+      const model = await buildReviewModel({ repo });
+
+      const initGroup = model.timelineView.features.find((feature) => feature.route === "init-bootstrap");
+      const reviewGroup = model.timelineView.features.find((feature) => feature.route === "review-interface");
+      expect(initGroup?.decisions.map((item) => item.id)).toContain("timeline:adr:ADR-0001");
+      expect(reviewGroup?.decisions.map((item) => item.id)).not.toContain("timeline:adr:ADR-0001");
+      expect(reviewGroup?.facts).toContainEqual(expect.objectContaining({
+        id: "timeline:fact:review-interface:REV001",
+        related: expect.objectContaining({ adrs: ["ADR-0001"] }),
+      }));
+    });
+  });
+
+  test("surfaces validation failures and fix links in timeline relationships", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      await addRendererPack(repo);
+      const handoff = await finalizeProject({
+        repo,
+        status: "success",
+        summary: "Implemented renderer transport clock.",
+        files: ["src/runtime/clock.ts"],
+      });
+      const failure = await recordValidationFailure({
+        repo,
+        summary: "User reported renderer transport clock still drifts.",
+        expected: "Renderer clock remains aligned after the transport clock change.",
+        actual: "Renderer clock drifts during playback.",
+        challenges: [handoff.id, "RR001"],
+        files: ["src/runtime/clock.ts"],
+      });
+      const fix = await finalizeProject({
+        repo,
+        status: "success",
+        summary: "Fixed renderer clock drift after user validation failure.",
+        files: ["src/runtime/clock.ts"],
+        fixes: [failure.id],
+      });
+      expect(fix.id).not.toBe(handoff.id);
+
+      const model = await buildReviewModel({ repo });
+
+      const failureItem = model.timeline.find((item) => item.id === `failure:${failure.id}`);
+      expect(failureItem).toEqual(expect.objectContaining({
+        kind: "failure",
+        status: "open",
+        summary: "User reported renderer transport clock still drifts.",
+        route: "renderer-runtime",
+      }));
+      expect(failureItem?.related.features).toContain("renderer-runtime");
+      expect(failureItem?.related.facts).toContain("RR001");
+      expect(failureItem?.related.challenges).toEqual([handoff.id, "RR001"]);
+
+      const fixItem = model.timeline.find((item) => item.id === `handoff:${fix.id}`);
+      expect(fixItem?.related.fixes).toEqual([failure.id]);
+      expect(fixItem?.related.features).toContain("renderer-runtime");
+
+      const rendererTimelineGroup = model.timelineView.features.find((feature) => feature.route === "renderer-runtime");
+      expect(rendererTimelineGroup?.operations).toContainEqual(expect.objectContaining({
+        kind: "failure",
+        id: `failure:${failure.id}`,
+      }));
+      expect(rendererTimelineGroup?.operations).toContainEqual(expect.objectContaining({
+        kind: "handoff",
+        id: `handoff:${fix.id}`,
       }));
     });
   });

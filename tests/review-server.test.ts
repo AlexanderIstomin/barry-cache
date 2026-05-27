@@ -162,6 +162,10 @@ describe("review server", () => {
         expect(script).toContain("activateRelatedTimelineFact");
         expect(script).toContain("centerTimelineFact");
         expect(script).toContain("centerTimelineFact(item, true)");
+        expect(script).toContain("selectedTimelineAnchorId");
+        expect(script).toContain("timelineRepresentativeIdForFact(item)");
+        expect(script).toContain("centerTimelineRepresentative(item, true)");
+        expect(script).toContain("state.selectedTimelineAnchorId === node.timelineId");
         expect(script).toContain("timelineTargetScale");
         expect(script).toContain("timelineFactKey(item)");
         expect(script).toContain("selectFactInTree");

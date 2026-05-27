@@ -43,6 +43,8 @@ export interface ReviewTimelineItem {
     facts: string[];
     adrs: string[];
     sources: string[];
+    challenges: string[];
+    fixes: string[];
   };
   meta: Record<string, unknown>;
 }
@@ -131,6 +133,8 @@ interface JsonlRecord {
   files?: unknown;
   tests?: unknown;
   tags?: unknown;
+  challenges?: unknown;
+  fixes?: unknown;
   [key: string]: unknown;
 }
 
@@ -370,6 +374,8 @@ function factTimelineItem(
       facts: [fact.id],
       adrs: linkedAdrs.map((adr) => adr.id),
       sources: sourceFiles,
+      challenges: [],
+      fixes: [],
     },
     meta: {
       fact,
@@ -395,6 +401,8 @@ function adrTimelineItem(adr: AdrRecord): ReviewTimelineItem {
       facts: [],
       adrs: [adr.id],
       sources: [adr.path],
+      challenges: [],
+      fixes: [],
     },
     meta: {
       title: adr.title,
@@ -440,6 +448,8 @@ async function addOperationalRecords(options: {
   raw.forEach((record, index) => {
     const id = `${options.kind}:${stringValue(record.id) || `${options.path}:${index + 1}`}`;
     const files = arrayOfStrings(record.files);
+    const challenges = arrayOfStrings(record.challenges);
+    const fixes = arrayOfStrings(record.fixes);
     const summary = stringValue(record.summary) || stringValue(record.title) || "No summary";
     addNode(options.graph, {
       id,
@@ -489,6 +499,8 @@ async function addOperationalRecords(options: {
         facts: related.facts,
         adrs: related.adrs,
         sources: files,
+        challenges,
+        fixes,
       },
       meta: record,
     };
@@ -556,6 +568,8 @@ function operationalRecordLinks(repo: string, files: string[], summary: string, 
     facts: unique([...factSet]),
     adrs: unique([...adrSet]),
     sources: files,
+    challenges: [],
+    fixes: [],
   };
 }
 
@@ -691,16 +705,17 @@ function buildTimelineView(features: FeaturePack[], timeline: ReviewTimelineItem
   const groupedOperationIds = new Set<string>();
   const groupedFeatures = features.map((feature) => {
     const featureFacts = factEvents.filter((item) => item.route === feature.slug || item.related.features.includes(feature.slug));
-    const linkedAdrIds = unique(featureFacts.flatMap((item) => item.related.adrs));
-    const linkedAdrs = linkedAdrIds
+    const decisionFacts = featureFacts.filter((item) => stringValue(item.meta.kind) === "decision");
+    const allLinkedAdrIds = unique(featureFacts.flatMap((item) => item.related.adrs));
+    const linkedDecisionAdrIds = unique(decisionFacts.flatMap((item) => item.related.adrs));
+    const linkedAdrs = linkedDecisionAdrIds
       .map((adrId) => adrById.get(adrId))
       .filter((item): item is ReviewTimelineItem => Boolean(item));
     const featureOperations = sortTimelineItems(operations.filter((item) =>
-      item.related.features.includes(feature.slug) || hasStringIntersection(item.related.adrs, linkedAdrIds)
+      item.related.features.includes(feature.slug) || hasStringIntersection(item.related.adrs, allLinkedAdrIds)
     ));
     for (const operation of featureOperations) groupedOperationIds.add(operation.id);
-    const decisionFacts = featureFacts.filter((item) => stringValue(item.meta.kind) === "decision");
-    const standaloneDecisionFacts = decisionFacts.filter((item) => !hasStringIntersection(item.related.adrs, linkedAdrIds));
+    const standaloneDecisionFacts = decisionFacts.filter((item) => !hasStringIntersection(item.related.adrs, linkedDecisionAdrIds));
     const decisions = sortTimelineItems([...linkedAdrs, ...standaloneDecisionFacts]);
     const facts = sortTimelineItems(featureFacts.filter((item) => stringValue(item.meta.kind) === "implemented"));
     const events = sortTimelineItems([...featureFacts, ...linkedAdrs, ...featureOperations]);
@@ -814,7 +829,7 @@ function buildSearchModel(nodes: ReviewNode[], facts: ReviewFactItem[], timeline
       route: item.route,
       timelineId: item.id,
       targetId: item.kind === "fact" && item.related.facts[0] ? `fact:${item.related.facts[0]}` : item.kind === "adr" && item.related.adrs[0] ? `adr:${item.related.adrs[0]}` : item.id,
-      text: searchText([item.id, item.kind, item.label, item.summary, item.timestamp, item.status, item.source, item.route, ...item.files, ...item.related.features, ...item.related.facts, ...item.related.adrs, ...item.related.sources]),
+      text: searchText([item.id, item.kind, item.label, item.summary, item.timestamp, item.status, item.source, item.route, ...item.files, ...item.related.features, ...item.related.facts, ...item.related.adrs, ...item.related.sources, ...item.related.challenges, ...item.related.fixes]),
     });
   }
 

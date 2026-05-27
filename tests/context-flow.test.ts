@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { finalizeProject, loadContext, resumeProject, routeTask, searchContext } from "../src/core/context";
+import { finalizeProject, loadContext, recordValidationFailure, resumeProject, routeTask, searchContext } from "../src/core/context";
 import { initProject } from "../src/core/init";
 import { validateProject } from "../src/core/validate";
 import { withTempRepo } from "./helpers";
@@ -63,9 +63,27 @@ describe("context flow", () => {
         tests: ["barry-cache validate"],
       });
       expect(finalize.saved).toBe(true);
+      expect(finalize.id).toStartWith("handoff-");
 
       const handoffs = await readFile(join(repo, ".context-state/handoffs/handoffs.jsonl"), "utf8");
       expect(handoffs).toContain("Updated renderer clock context.");
+
+      const failure = await recordValidationFailure({
+        repo,
+        summary: "User reported that renderer clock drift still reproduces after the handoff.",
+        expected: "Renderer clock remains aligned after scheduling updates.",
+        actual: "Renderer clock still drifts during playback.",
+        challenges: [finalize.id],
+        files: ["src/runtime/clock.ts"],
+      });
+      expect(failure.saved).toBe(true);
+      expect(failure.id).toStartWith("failure-");
+
+      const failures = await readFile(join(repo, ".context-state/failures/failures.jsonl"), "utf8");
+      expect(failures).toContain("\"kind\":\"validation_failure\"");
+      expect(failures).toContain("\"status\":\"open\"");
+      expect(failures).toContain(finalize.id);
+      expect(failures).toContain("Renderer clock still drifts during playback.");
     });
   });
 

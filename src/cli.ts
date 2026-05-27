@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
 import { buildChangelog, writeChangelog, type WriteChangelogResult } from "./core/changelog";
-import { finalizeProject, loadContext, resumeProject, routeTask, searchContext } from "./core/context";
+import { finalizeProject, loadContext, recordValidationFailure, resumeProject, routeTask, searchContext, type ValidationFailureStatus } from "./core/context";
 import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
@@ -35,6 +35,7 @@ class CliArgumentError extends Error {
 const importSources = ["pulpcut-kb"] as const;
 const agentTargets = ["all", "none", "codex", "cursor", "copilot", "claude", "gemini", "llms"];
 const finalizeStatuses = ["success", "partial", "blocked", "failed"] as const;
+const failureStatuses = ["open", "fixed", "wontfix"] as const;
 
 async function main(argv = process.argv.slice(2)): Promise<void> {
   const parsed = parseArgs(argv);
@@ -87,8 +88,19 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       case "finalize": {
         const status = optionalChoice(parsed, "status", finalizeStatuses, "success", commandUsage("finalize"));
         const summary = requiredString(parsed, "summary", commandUsage("finalize"), { status: [...finalizeStatuses] });
-        const result = await finalizeProject({ repo, status, summary });
+        const result = await finalizeProject({
+          repo,
+          status,
+          summary,
+          files: optionalList(parsed, "files", commandUsage("finalize")),
+          tests: optionalList(parsed, "tests", commandUsage("finalize")),
+          fixes: optionalList(parsed, "fixes", commandUsage("finalize")),
+        });
         print(result, json, formatFinalizeMessage(result));
+        break;
+      }
+      case "failure": {
+        await handleFailureCommand(parsed, repo, json);
         break;
       }
       case "changelog": {
@@ -310,6 +322,31 @@ async function handleAdrCommand(parsed: ParsedArgs, repo: string, json: boolean)
   });
 }
 
+async function handleFailureCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === "record") {
+    const failureOptions: Parameters<typeof recordValidationFailure>[0] = {
+      repo,
+      summary: requiredString(parsed, "summary", commandUsage("failure record")),
+      expected: requiredString(parsed, "expected", commandUsage("failure record")),
+      actual: requiredString(parsed, "actual", commandUsage("failure record")),
+      status: optionalChoice(parsed, "status", failureStatuses, "open", commandUsage("failure record")) as ValidationFailureStatus,
+      files: optionalList(parsed, "files", commandUsage("failure record")),
+      challenges: optionalList(parsed, "challenges", commandUsage("failure record")),
+      fixes: optionalList(parsed, "fixes", commandUsage("failure record")),
+    };
+    const reporter = optionalString(parsed, "reporter", commandUsage("failure record"));
+    if (reporter !== undefined) failureOptions.reporter = reporter;
+    const result = await recordValidationFailure(failureOptions);
+    print(result, json, `Saved validation failure to ${result.path}.`);
+    return;
+  }
+
+  throw new CliArgumentError(action ? `Unknown failure action: ${action}` : "Missing failure action", {
+    usage: commandUsage("failure"),
+  });
+}
+
 function formatAdrList(adrs: Awaited<ReturnType<typeof listAdrs>>): string {
   if (adrs.length === 0) return "No ADRs found.";
   return adrs.map((adr) => `${adr.id}  ${adr.status}  ${adr.title} (${adr.path})`).join("\n");
@@ -398,7 +435,9 @@ function commandUsage(command: string): string | undefined {
     search: 'barry-cache search --query "..." [--json]',
     load: 'barry-cache load --route "..." [--json]',
     resume: 'barry-cache resume --task "..." [--json]',
-    finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--json]',
+    finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
+    failure: "barry-cache failure <record> [--json]",
+    "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
     changelog: "barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--file CHANGELOG.md] [--json]",
     import: "barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]",
     review: "barry-cache review [--port 8787] [--open] [--json]",
@@ -421,6 +460,7 @@ Usage:
   barry-cache load --route "..." [--json]
   barry-cache resume --task "..." [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
+  barry-cache failure record --summary "..." --expected "..." --actual "..." [--json]
   barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--json]
   barry-cache adr new --title "..." [--status active] [--tags context,agents]
   barry-cache adr list [--json]

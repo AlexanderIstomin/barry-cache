@@ -1,9 +1,13 @@
 import { appendFile, mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { basename, join } from "node:path";
 import { adrToText, linkedAdrsForSources, type AdrRecord } from "./adr";
 import { readContextSnapshot } from "./context-cache";
 import { rel, repoPath } from "./fs";
 import type { FactRecord, FeaturePack, RouteMatch } from "./types";
+
+export type FinalizeStatus = "success" | "partial" | "blocked" | "failed";
+export type ValidationFailureStatus = "open" | "fixed" | "wontfix";
 
 export interface RouteResult {
   task: string;
@@ -137,24 +141,67 @@ export async function resumeProject({ repo, task }: { repo: string; task: string
 
 export async function finalizeProject(options: {
   repo: string;
-  status: "success" | "partial" | "blocked" | "failed";
+  status: FinalizeStatus;
   summary: string;
   files?: string[];
   tests?: string[];
-}): Promise<{ saved: boolean; path: string; summary: string }> {
+  fixes?: string[];
+}): Promise<{ saved: boolean; path: string; id: string; status: FinalizeStatus; summary: string }> {
   const dir = repoPath(options.repo, ".context-state/handoffs");
   await mkdir(dir, { recursive: true });
   const path = join(dir, "handoffs.jsonl");
+  const now = new Date().toISOString();
+  const id = operationId("handoff", now);
   const record = {
-    id: `handoff-${new Date().toISOString()}`,
-    updated_at: new Date().toISOString(),
+    id,
+    updated_at: now,
     status: options.status,
     summary: options.summary,
     files: options.files ?? [],
     tests: options.tests ?? [],
+    fixes: options.fixes ?? [],
   };
   await appendFile(path, `${JSON.stringify(record)}\n`);
-  return { saved: true, path: rel(options.repo, path), summary: options.summary };
+  return { saved: true, path: rel(options.repo, path), id, status: options.status, summary: options.summary };
+}
+
+export async function recordValidationFailure(options: {
+  repo: string;
+  summary: string;
+  expected: string;
+  actual: string;
+  status?: ValidationFailureStatus;
+  reporter?: string;
+  files?: string[];
+  challenges?: string[];
+  fixes?: string[];
+}): Promise<{ saved: boolean; path: string; id: string; status: ValidationFailureStatus; summary: string }> {
+  const dir = repoPath(options.repo, ".context-state/failures");
+  await mkdir(dir, { recursive: true });
+  const path = join(dir, "failures.jsonl");
+  const status = options.status ?? "open";
+  const now = new Date().toISOString();
+  const id = operationId("failure", now);
+  const record = {
+    id,
+    kind: "validation_failure",
+    observed_at: now,
+    updated_at: now,
+    status,
+    summary: options.summary,
+    expected: options.expected,
+    actual: options.actual,
+    reporter: options.reporter ?? "user",
+    files: options.files ?? [],
+    challenges: options.challenges ?? [],
+    fixes: options.fixes ?? [],
+  };
+  await appendFile(path, `${JSON.stringify(record)}\n`);
+  return { saved: true, path: rel(options.repo, path), id, status, summary: options.summary };
+}
+
+function operationId(prefix: "handoff" | "failure", timestamp: string): string {
+  return `${prefix}-${timestamp}-${randomUUID().slice(0, 8)}`;
 }
 
 export async function readFeaturePacks(repo: string): Promise<FeaturePack[]> {

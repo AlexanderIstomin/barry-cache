@@ -30,12 +30,19 @@ bun run barry -- validate
 Before handing off substantial work, record factual evidence:
 
 ```bash
-bun run barry -- finalize --status success --summary "<summary>"
+bun run barry -- finalize --status success --summary "<summary>" --files "path-a,path-b"
+```
+
+When user validation shows previous work is broken, record the contradiction before or while fixing it:
+
+```bash
+bun run barry -- failure record --summary "<what failed>" --expected "<expected behavior>" --actual "<observed behavior>" --challenges "<handoff-or-fact-id>"
 ```
 
 Memory policy:
 
 - Finalize writes operational memory only.
+- Failure records write operational validation memory only and should challenge stale handoffs or facts instead of rewriting history.
 - Do not claim Barry canonical memory is updated unless `docs/context/` changed.
 - If a task adds durable implementation behavior, add or update source-backed facts in `docs/context/features/*/FACTS.jsonl` and run `bun run barry -- validate`.
 - Use ISO 8601 timestamps in fact `updated_at` values when saving new facts, so same-day feature order is preserved in review timelines.

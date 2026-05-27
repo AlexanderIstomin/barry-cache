@@ -8,6 +8,7 @@
     selectedId: null,
     selectedTreeUid: null,
     selectedTimelineId: null,
+    selectedTimelineAnchorId: null,
     selectedTimelineArtifactId: null,
     expandedFactId: null,
     transitionExpandedFactId: null,
@@ -72,6 +73,7 @@
       if (!state.selectedTimelineId && !state.selectedTimelineArtifactId) {
         var firstTimelineItem = firstTimelineItemForCanvas();
         state.selectedTimelineId = firstTimelineItem ? firstTimelineItem.id : null;
+        state.selectedTimelineAnchorId = null;
       }
       state.selectedId = null;
       state.selectedTreeUid = null;
@@ -221,6 +223,7 @@
         state.selectedId = featureTreeId(slug);
         state.selectedTreeUid = featureTreeId(slug);
         state.selectedTimelineId = null;
+        state.selectedTimelineAnchorId = null;
         state.selectedTimelineArtifactId = null;
         state.expandedFactId = null;
         state.transitionExpandedFactId = null;
@@ -241,6 +244,7 @@
         state.selectedId = state.selectedFeature ? featureTreeId(state.selectedFeature) : null;
         state.selectedTreeUid = state.selectedId;
         state.selectedTimelineId = null;
+        state.selectedTimelineAnchorId = null;
         state.selectedTimelineArtifactId = null;
         state.expandedFactId = null;
         state.transitionExpandedFactId = null;
@@ -296,11 +300,13 @@
       if (!state.selectedTimelineId && !state.selectedTimelineArtifactId) {
         var firstTimelineItem = firstTimelineItemForCanvas();
         state.selectedTimelineId = firstTimelineItem ? firstTimelineItem.id : null;
+        state.selectedTimelineAnchorId = null;
       }
       state.selectedId = null;
       state.selectedTreeUid = null;
     } else {
       state.selectedTimelineId = null;
+      state.selectedTimelineAnchorId = null;
       state.selectedTimelineArtifactId = null;
       if (!state.selectedTreeUid) {
         var feature = currentFeature();
@@ -782,7 +788,7 @@
   }
 
   function renderTimelineFeatureBand(node) {
-    var selected = state.selectedId === "feature:" + node.route && !state.selectedTimelineId;
+    var selected = state.selectedId === "feature:" + node.route && !state.selectedTimelineId && !state.selectedTimelineAnchorId;
     var dimmed = state.query.trim() && !node.matches && !selected;
     var classes = "tree-node timeline-node timeline-feature-band" + (selected ? " is-selected" : "") + (dimmed ? " is-dimmed" : "");
     var color = timelineNodeColor(node);
@@ -798,7 +804,7 @@
   }
 
   function renderTimelineDecisionNode(node) {
-    var selected = state.selectedTimelineId === node.timelineId;
+    var selected = isTimelineNodeSelected(node);
     var dimmed = state.query.trim() && !node.matches && !selected;
     var relatedHover = state.hoveredRelatedFactKey && state.hoveredRelatedFactKey === node.factKey;
     var classes = "tree-node tree-node-card timeline-node timeline-decision-node timeline-node-" + node.timelineKind + (selected ? " is-selected" : "") + (relatedHover ? " is-related-hover" : "") + (dimmed ? " is-dimmed" : "");
@@ -816,7 +822,7 @@
   }
 
   function renderTimelineFactBullet(node) {
-    var selected = state.selectedTimelineId === node.timelineId;
+    var selected = isTimelineNodeSelected(node);
     var dimmed = state.query.trim() && !node.matches && !selected;
     var relatedHover = state.hoveredRelatedFactKey && state.hoveredRelatedFactKey === node.factKey;
     var classes = "tree-node timeline-node timeline-fact-bullet" + (selected ? " is-selected" : "") + (relatedHover ? " is-related-hover" : "") + (dimmed ? " is-dimmed" : "");
@@ -866,7 +872,7 @@
   }
 
   function renderTimelineOperationNode(node) {
-    var selected = state.selectedTimelineId === node.timelineId;
+    var selected = isTimelineNodeSelected(node);
     var dimmed = state.query.trim() && !node.matches && !selected;
     var classes = "tree-node timeline-node timeline-operation-node timeline-node-" + node.timelineKind + (selected ? " is-selected" : "") + (dimmed ? " is-dimmed" : "");
     var color = timelineNodeColor(node);
@@ -894,6 +900,10 @@
 
   function timelineItemsForCanvas() {
     return state.model && state.model.timeline ? state.model.timeline : [];
+  }
+
+  function isTimelineNodeSelected(node) {
+    return state.selectedTimelineId === node.timelineId || state.selectedTimelineAnchorId === node.timelineId;
   }
 
   function timelineFeatureGroups() {
@@ -1708,6 +1718,7 @@
     state.showAllRelatedFacts = false;
     state.hoveredRelatedFactKey = null;
     state.selectedTimelineId = null;
+    state.selectedTimelineAnchorId = null;
     state.selectedTimelineArtifactId = null;
     openInspector();
     state.selectedTreeUid = node.uid;
@@ -2017,6 +2028,7 @@
     state.showAllRelatedFacts = false;
     state.hoveredRelatedFactKey = null;
     state.selectedTimelineArtifactId = null;
+    state.selectedTimelineAnchorId = null;
     openInspector();
     var previousFeature = state.selectedFeature;
     var sourceFactId = selectedFactId() || state.expandedFactId;
@@ -2046,14 +2058,17 @@
     state.selectedFeature = item.route;
     state.selectedId = null;
     state.selectedTreeUid = null;
-    state.selectedTimelineId = timelineIdForFact(item.route, item.fact.id);
+    var timelineId = timelineIdForFact(item.route, item.fact.id);
+    var representativeId = timelineRepresentativeIdForFact(item);
+    state.selectedTimelineId = timelineId;
+    state.selectedTimelineAnchorId = representativeId && representativeId !== timelineId ? representativeId : null;
     state.selectedTimelineArtifactId = null;
     state.showAllRelatedFacts = false;
     state.hoveredRelatedFactKey = null;
     openInspector();
     ensureTimelineFactVisible(item);
     drawCanvas();
-    centerTimelineFact(item, true);
+    if (!centerTimelineFact(item, true)) centerTimelineRepresentative(item, true);
     renderInspector();
     syncWorkspaceClass();
   }
@@ -2068,10 +2083,30 @@
 
   function centerTimelineFact(item, animated) {
     var tree = state.visibleTree;
-    if (!tree || !tree.nodes) return;
+    if (!tree || !tree.nodes) return false;
     var factKey = factKeyFor(item.route, item.fact.id);
     var node = tree.nodes.find(function (candidate) { return candidate.factKey === factKey; });
-    if (!node) return;
+    if (!node) return false;
+    centerTimelineNode(node, animated);
+    return true;
+  }
+
+  function centerTimelineRepresentative(item, animated) {
+    var representativeId = timelineRepresentativeIdForFact(item);
+    if (!representativeId) return false;
+    return centerTimelineNodeById(representativeId, animated);
+  }
+
+  function centerTimelineNodeById(timelineId, animated) {
+    var tree = state.visibleTree;
+    if (!tree || !tree.nodes) return false;
+    var node = tree.nodes.find(function (candidate) { return candidate.timelineId === timelineId; });
+    if (!node) return false;
+    centerTimelineNode(node, animated);
+    return true;
+  }
+
+  function centerTimelineNode(node, animated) {
     var canvas = document.getElementById("tree-canvas");
     var rect = canvas.getBoundingClientRect();
     var width = Math.max(320, rect.width || 900);
@@ -2085,6 +2120,25 @@
     state.transform.y = target.y;
     state.transform.scale = target.scale;
     paintTreeFrame();
+  }
+
+  function timelineRepresentativeIdForFact(item) {
+    var timelineItem = timelineItemForFactItem(item);
+    if (!timelineItem) return null;
+    var group = timelineFeatureGroups().find(function (candidate) { return candidate.route === item.route; });
+    if (!group) return timelineItem.id;
+    if ((group.facts || []).some(function (candidate) { return candidate.id === timelineItem.id; })) return timelineItem.id;
+    if ((group.decisions || []).some(function (candidate) { return candidate.id === timelineItem.id; })) return timelineItem.id;
+    var adrIds = timelineItem.related && timelineItem.related.adrs ? timelineItem.related.adrs : [];
+    var decision = (group.decisions || []).find(function (candidate) {
+      var candidateAdrs = candidate.related && candidate.related.adrs ? candidate.related.adrs : [];
+      return hasIntersection(adrIds, candidateAdrs);
+    });
+    return decision ? decision.id : timelineItem.id;
+  }
+
+  function timelineItemForFactItem(item) {
+    return item && item.route && item.fact ? timelineItemById(timelineIdForFact(item.route, item.fact.id)) : null;
   }
 
   function timelineTargetScale() {
@@ -2669,6 +2723,7 @@
     cancelTreeAnimation();
     state.leftView = "timeline";
     state.selectedTimelineId = item.id;
+    state.selectedTimelineAnchorId = null;
     state.selectedTimelineArtifactId = null;
     state.selectedId = null;
     state.selectedTreeUid = null;
@@ -2683,6 +2738,7 @@
     state.leftView = "timeline";
     state.selectedFeature = node.route || state.selectedFeature;
     state.selectedTimelineId = null;
+    state.selectedTimelineAnchorId = null;
     state.selectedTimelineArtifactId = node.id;
     state.selectedId = null;
     state.selectedTreeUid = null;
@@ -2699,6 +2755,7 @@
     state.leftView = "timeline";
     state.selectedFeature = route;
     state.selectedTimelineId = null;
+    state.selectedTimelineAnchorId = null;
     state.selectedTimelineArtifactId = null;
     state.selectedId = "feature:" + route;
     state.selectedTreeUid = null;
@@ -2713,6 +2770,7 @@
     state.leftView = "features";
     if (route) state.selectedFeature = route;
     state.selectedTimelineId = null;
+    state.selectedTimelineAnchorId = null;
     state.selectedTimelineArtifactId = null;
     var factMatch = id && id.match(/^fact:(.+)$/);
     if (factMatch && state.selectedFeature) {
