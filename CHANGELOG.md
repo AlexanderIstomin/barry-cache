@@ -4,6 +4,8 @@
 
 ### Review Interface
 - Review timeline validation failures surface validation failure events and follow-up handoff fix links through timeline related challenge and fix arrays while grouping linked failures with feature operations
+- Review timeline decision lane promotes ADR cards only from decision facts while implemented-fact ADR references remain related links on fact timeline items
+- Timeline related fact navigation centers a visible representative ADR or decision node when a clicked related fact has no standalone rendered timeline fact node
 
 
 ## 2026-05-26

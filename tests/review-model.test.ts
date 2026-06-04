@@ -176,12 +176,15 @@ describe("buildReviewModel", () => {
       const handoff = model.timeline.find((item) => item.kind === "handoff");
       expect(handoff?.related.features).toContain("renderer-runtime");
       expect(handoff?.related.adrs).toContain("ADR-0001");
+      expect(handoff?.timestamp).toEqual(expect.any(String));
+      const handoffDate = handoff?.timestamp?.slice(0, 10);
 
-      expect(model.timelineView.features).toContainEqual(expect.objectContaining({
+      const rendererTimelineGroup = model.timelineView.features.find((feature) => feature.route === "renderer-runtime");
+      expect(rendererTimelineGroup).toEqual(expect.objectContaining({
         route: "renderer-runtime",
         label: "Renderer Runtime",
         start: "2026-05-16",
-        end: expect.stringMatching(/^2026-05-/),
+        end: handoffDate,
         decisions: expect.arrayContaining([
           expect.objectContaining({ id: "timeline:adr:ADR-0001" }),
         ]),
@@ -192,7 +195,6 @@ describe("buildReviewModel", () => {
           expect.objectContaining({ kind: "handoff", summary: "Implemented renderer transport clock." }),
         ]),
       }));
-      const rendererTimelineGroup = model.timelineView.features.find((feature) => feature.route === "renderer-runtime");
       expect(rendererTimelineGroup?.decisions).not.toContainEqual(expect.objectContaining({
         id: "timeline:fact:renderer-runtime:RR002",
       }));
