@@ -101,6 +101,19 @@ describe("ADR support", () => {
     });
   });
 
+  test("validation accepts ADR ids as fact sources without IDMAP entries", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      const adr = await createAdr({ repo, title: "Use ADR id sources" });
+      await addContextPack(repo, adr.id);
+
+      const validation = await validateProject({ repo });
+
+      expect(validation.ok).toBe(true);
+      expect(validation.errors).toEqual([]);
+    });
+  });
+
   test("validation reports malformed ADR metadata", async () => {
     await withTempRepo(async (repo) => {
       await initProject({ repo, yes: true });

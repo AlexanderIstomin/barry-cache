@@ -68,7 +68,8 @@ Memory policy:
 - Failure records write operational validation memory only and should challenge stale handoffs or facts instead of rewriting history.
 - Do not claim Barry canonical memory is updated unless \`docs/context/\` changed.
 - If a task adds durable implementation behavior, add or update source-backed facts in \`docs/context/features/*/FACTS.jsonl\` and run \`${commandPrefix} validate\`.
-- There is no \`fact\` CLI command; update canonical facts by editing \`docs/context/features/*/FACTS.jsonl\` directly, then run \`${commandPrefix} validate\`.
+- Direct \`FACTS.jsonl\` edits remain supported; use \`${commandPrefix} fact draft --route "<route>" --prefix "<PREFIX>" ...\` when a schema-checked JSONL draft or explicit \`--write\` append is safer.
+- \`fact draft\` is an authoring guardrail, not broad canonical CRUD; review the resulting diff and run \`${commandPrefix} validate\`.
 - Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts, so same-day feature order is preserved in review timelines.
 - Use collision-resistant fact IDs like \`REV-20260526T160512Z-a8f3\`; dense review UI may display them as \`REV-a8f3\`.
 
@@ -114,7 +115,9 @@ export const maintenanceMd = `# Context Maintenance
 
 - Keep project truth in Git.
 - Add source-backed facts to feature \`FACTS.jsonl\` files.
-- There is no \`fact\` CLI command; edit feature \`FACTS.jsonl\` files directly when updating canonical facts.
+- Directly edit feature \`FACTS.jsonl\` files when that is clearest.
+- Use \`barry-cache fact draft --route "<route>" --prefix "<PREFIX>" ...\` to generate a schema-checked JSONL fact row; add \`--write\` only when you intentionally want Barry to append it.
+- \`fact draft\` is an authoring guardrail, not broad canonical CRUD; review the resulting diff.
 - Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts.
 - Use collision-resistant fact IDs like \`REV-20260526T160512Z-a8f3\`.
 - Use \`barry-cache adr new --title "<decision>"\` for decisions that change architecture.
@@ -133,7 +136,7 @@ Rules:
 1. Record the session outcome with barry-cache finalize.
 2. If user validation showed previous work was wrong, first record it with barry-cache failure record and link the follow-up finalize with --fixes.
 3. Promote only source-backed implementation facts into docs/context/features/*/FACTS.jsonl.
-4. Do not use a fact CLI command; edit FACTS.jsonl directly for canonical facts.
+4. Use fact draft for schema-checked JSONL drafts/appends when helpful, or edit FACTS.jsonl directly for canonical facts.
 5. Put uncertain notes, blockers, and next steps in operational memory, not canonical facts.
 6. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
 7. Run barry-cache validate before finishing.

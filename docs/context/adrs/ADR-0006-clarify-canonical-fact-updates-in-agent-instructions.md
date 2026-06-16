@@ -1,7 +1,7 @@
 ---
 id: ADR-0006
 title: Clarify canonical fact updates in agent instructions
-status: active
+status: superseded
 date: 2026-06-02
 supersedes: []
 tags: [init, agents, context]

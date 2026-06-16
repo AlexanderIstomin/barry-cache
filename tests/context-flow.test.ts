@@ -101,4 +101,111 @@ describe("context flow", () => {
       expect(validation.errors[0]?.message).toContain("subject");
     });
   });
+
+  test("validation rejects malformed fact metadata and duplicate feature fact ids", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      await addRendererPack(repo);
+      await writeFile(
+        join(repo, "docs/context/features/renderer-runtime/FACTS.jsonl"),
+        [
+          {
+            id: "RR001",
+            subject: "A0",
+            predicate: "owns",
+            object: "transport clock",
+            src: ["F01"],
+            status: "active",
+            kind: "implemented",
+            updated_at: "2026-05-17",
+            confidence: "high",
+          },
+          {
+            id: "RR001",
+            subject: "A0",
+            predicate: "owns",
+            object: "frame scheduler",
+            src: ["F01"],
+            status: "draft",
+            kind: "implementation",
+            updated_at: "yesterday",
+            confidence: "certain",
+          },
+        ].map((row) => JSON.stringify(row)).join("\n") + "\n",
+      );
+
+      const validation = await validateProject({ repo });
+
+      expect(validation.ok).toBe(false);
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/FACTS.jsonl",
+        line: 2,
+        message: "duplicate fact id in feature pack: RR001",
+      }));
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/FACTS.jsonl",
+        line: 2,
+        message: "invalid field: status",
+      }));
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/FACTS.jsonl",
+        line: 2,
+        message: "invalid field: kind",
+      }));
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/FACTS.jsonl",
+        line: 2,
+        message: "invalid field: updated_at",
+      }));
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/FACTS.jsonl",
+        line: 2,
+        message: "invalid field: confidence",
+      }));
+    });
+  });
+
+  test("validation reports malformed ID maps, graph rows, and unresolved source ids", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      await addRendererPack(repo);
+      await writeFile(
+        join(repo, "docs/context/features/renderer-runtime/IDMAP.md"),
+        "# ID Map\n\n- `F01`: src/runtime/clock.ts\n- `BROKEN` src/runtime/broken.ts\n",
+      );
+      await writeFile(join(repo, "docs/context/features/renderer-runtime/KG.adj"), "A0 owns transport-clock\nbroken-edge\n");
+      await writeFile(
+        join(repo, "docs/context/features/renderer-runtime/FACTS.jsonl"),
+        JSON.stringify({
+          id: "RR002",
+          subject: "A0",
+          predicate: "owns",
+          object: "frame scheduler",
+          src: ["MISSING_SOURCE"],
+          status: "active",
+          kind: "implemented",
+          updated_at: "2026-05-18T10:15:00.000Z",
+        }) + "\n",
+      );
+
+      const validation = await validateProject({ repo });
+
+      expect(validation.ok).toBe(false);
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/IDMAP.md",
+        line: 4,
+        message: "invalid ID map entry",
+      }));
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/KG.adj",
+        line: 2,
+        message: "invalid graph row",
+      }));
+      expect(validation.errors).toContainEqual(expect.objectContaining({
+        file: "docs/context/features/renderer-runtime/FACTS.jsonl",
+        line: 1,
+        message: "fact references unknown source id: MISSING_SOURCE",
+      }));
+    });
+  });
 });

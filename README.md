@@ -74,7 +74,7 @@ Checks whether the repo context is structurally valid.
 barry-cache validate
 ```
 
-It verifies required context files, ADR frontmatter, and every fact row in `docs/context/features/*/FACTS.jsonl`.
+It verifies required context files, ADR frontmatter, ID map rows, graph rows, and every fact row in `docs/context/features/*/FACTS.jsonl`. It also catches duplicate fact IDs within a feature pack, invalid fact enum/timestamp fields, and bare `src` IDs that do not resolve through that feature's `IDMAP.md`.
 
 Use this after editing context files, importing memory, or before committing Barry Cache changes.
 
@@ -159,6 +159,35 @@ Statuses:
 - `partial`: some useful progress was made.
 - `blocked`: the task cannot proceed without external input.
 - `failed`: the attempted approach did not work.
+
+### `barry-cache feature new`
+
+Scaffolds a canonical feature context pack.
+
+```bash
+barry-cache feature new --slug renderer-runtime --title "Renderer Runtime" --summary "Owns runtime scheduling."
+barry-cache feature new --slug renderer-runtime --title "Renderer Runtime" --summary "Owns runtime scheduling." --dry-run --json
+```
+
+It creates `README.md`, `IDMAP.md`, `KG.adj`, and `FACTS.jsonl` under `docs/context/features/<slug>/`. The command refuses to overwrite an existing feature pack.
+
+Use this when adding a new durable context route. Fill in the ID map, graph, and facts before relying on the route.
+
+### `barry-cache fact draft`
+
+Generates a schema-checked JSONL fact row and optionally appends it.
+
+```bash
+barry-cache fact draft --route renderer-runtime --id RR002 --subject "Renderer runtime" --predicate "owns" --object "frame scheduler" --src F01,F02
+```
+
+```bash
+barry-cache fact draft --route renderer-runtime --prefix RR --subject "Renderer runtime" --predicate "tests" --object "clock scheduling contract" --src F02 --kind test --write --json
+```
+
+Without `--write`, the command prints one JSONL row and does not mutate `FACTS.jsonl`. With `--write`, it appends the row after checking the route exists, the fact ID is not already present, and bare `src` IDs exist in the feature `IDMAP.md`.
+
+Direct `FACTS.jsonl` edits remain supported. `fact draft` is a guardrail for generating or appending a valid row, not a broad CRUD interface for canonical context.
 
 ### `barry-cache adr`
 
@@ -349,9 +378,10 @@ Rules:
 1. Record the session outcome with barry-cache finalize.
 2. Promote only source-backed implementation facts into docs/context/features/*/FACTS.jsonl.
 3. Put uncertain notes, blockers, and next steps in operational memory, not canonical facts.
-4. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
-5. Run barry-cache validate before finishing.
-6. Do not claim Barry canonical memory is updated unless docs/context/ changed.
+4. Use fact draft for schema-checked JSONL drafts/appends when helpful, or edit FACTS.jsonl directly.
+5. Update IDMAP.md or KG.adj only when new source IDs or relationships are needed.
+6. Run barry-cache validate before finishing.
+7. Do not claim Barry canonical memory is updated unless docs/context/ changed.
 ```
 
 The minimum useful save is:

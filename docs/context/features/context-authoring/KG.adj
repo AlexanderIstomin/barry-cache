@@ -1,0 +1,5 @@
+context-authoring validates canonical-context
+context-authoring scaffolds feature-packs
+context-authoring drafts fact-records
+fact-draft validates source-ids
+agent-instructions describe authoring-guardrails
