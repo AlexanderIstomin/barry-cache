@@ -6,6 +6,8 @@ import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
+import { buildSharedKbSnapshot, searchSharedKb, validateSharedKbSource } from "./core/shared-kb";
+import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig } from "./core/shared-kb-config";
 import type { AgentInstructionTarget, InitResult } from "./core/types";
 import { validateProject } from "./core/validate";
 
@@ -101,6 +103,10 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       }
       case "failure": {
         await handleFailureCommand(parsed, repo, json);
+        break;
+      }
+      case "kb": {
+        await handleKbCommand(parsed, repo, json);
         break;
       }
       case "changelog": {
@@ -347,6 +353,106 @@ async function handleFailureCommand(parsed: ParsedArgs, repo: string, json: bool
   });
 }
 
+async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === "sharing") {
+    await handleKbSharingCommand(parsed, repo, json);
+    return;
+  }
+
+  if (action === "validate") {
+    const source = requiredString(parsed, "source", commandUsage("kb validate"));
+    const result = await validateSharedKbSource({ source });
+    print(result, json, result.ok
+      ? `Shared KB source is valid. ${result.lessons.length} lesson(s), ${result.revocations.length} revocation(s).`
+      : `Shared KB source has ${result.errors.length} error(s).`);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (action === "build") {
+    const source = requiredString(parsed, "source", commandUsage("kb build"));
+    const out = requiredString(parsed, "out", commandUsage("kb build"));
+    const privateKeyPath = optionalString(parsed, "private-key", commandUsage("kb build"));
+    const publicKeyPath = optionalString(parsed, "public-key", commandUsage("kb build"));
+    if ((privateKeyPath && !publicKeyPath) || (!privateKeyPath && publicKeyPath)) {
+      throw new CliArgumentError("Use --private-key and --public-key together.", { usage: commandUsage("kb build") });
+    }
+    const buildOptions: Parameters<typeof buildSharedKbSnapshot>[0] = { source, out };
+    if (privateKeyPath && publicKeyPath) {
+      buildOptions.privateKeyPath = privateKeyPath;
+      buildOptions.publicKeyPath = publicKeyPath;
+    }
+    const result = await buildSharedKbSnapshot(buildOptions);
+    print(result, json, `Built shared KB snapshot at ${result.out} with ${result.published} lesson(s).`);
+    return;
+  }
+
+  if (action === "search") {
+    const source = requiredString(parsed, "source", commandUsage("kb search"));
+    const query = requiredString(parsed, "query", commandUsage("kb search"));
+    await assertRemoteSharedKbSearchAllowed(repo, source);
+    const result = await searchSharedKb({
+      source,
+      query,
+      includeReviewed: parsed.flags.get("include-reviewed") === true,
+    });
+    print(result, json, formatKbSearchResults(result));
+    return;
+  }
+
+  throw new CliArgumentError(action ? `Unknown KB action: ${action}` : "Missing KB action", {
+    usage: commandUsage("kb"),
+  });
+}
+
+async function handleKbSharingCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[1];
+  if (action === "status") {
+    const config = await readSharedKbConfig({ repo });
+    print(config, json, formatSharedKbSharingMessage(config));
+    return;
+  }
+
+  if (action === "set") {
+    const rawMode = parsed.positionals[2];
+    if (!rawMode) {
+      throw new CliArgumentError("Missing shared KB contribution mode", {
+        usage: commandUsage("kb sharing set"),
+        options: { mode: [...sharedKbContributionModes] },
+      });
+    }
+    const mode = toSharedKbContributionMode(rawMode);
+    if (!mode) {
+      throw new CliArgumentError(`Unsupported shared KB contribution mode: ${rawMode}`, {
+        usage: commandUsage("kb sharing set"),
+        options: { mode: [...sharedKbContributionModes] },
+      });
+    }
+    const config = await writeSharedKbContributionMode({ repo, mode });
+    print(config, json, formatSharedKbSharingMessage(config));
+    return;
+  }
+
+  throw new CliArgumentError(action ? `Unknown KB sharing action: ${action}` : "Missing KB sharing action", {
+    usage: commandUsage("kb sharing"),
+  });
+}
+
+async function assertRemoteSharedKbSearchAllowed(repo: string, source: string): Promise<void> {
+  if (!isRemoteSharedKbSource(source)) return;
+  const config = await readSharedKbConfig({ repo });
+  if (config.shared_kb.contribution === "share_enabled") return;
+  throw new CliArgumentError("Remote shared KB search requires share-enabled mode. Run `barry-cache kb sharing set share-enabled` before crawling community KB sources.", {
+    usage: commandUsage("kb sharing set"),
+    options: { mode: [...sharedKbContributionModes] },
+  });
+}
+
+function isRemoteSharedKbSource(source: string): boolean {
+  return /^https?:\/\//i.test(source);
+}
+
 function formatAdrList(adrs: Awaited<ReturnType<typeof listAdrs>>): string {
   if (adrs.length === 0) return "No ADRs found.";
   return adrs.map((adr) => `${adr.id}  ${adr.status}  ${adr.title} (${adr.path})`).join("\n");
@@ -358,6 +464,30 @@ function formatFinalizeMessage(result: Awaited<ReturnType<typeof finalizeProject
     "Finalize writes operational memory only; it does not update canonical context in docs/context/.",
     "If this task introduced durable implementation behavior, add or update docs/context/features/*/FACTS.jsonl and run barry-cache validate.",
   ].join("\n");
+}
+
+function formatKbSearchResults(result: Awaited<ReturnType<typeof searchSharedKb>>): string {
+  if (result.results.length === 0) return "No shared KB lessons matched.";
+  return result.results.map((item) => [
+    `${item.id}  ${item.status}  ${item.title}`,
+    `  ${item.summary}`,
+    `  tags: ${item.tags.join(", ")}`,
+  ].join("\n")).join("\n");
+}
+
+function formatSharedKbSharingMessage(config: SharedKbConfig): string {
+  const mode = formatSharedKbContributionMode(config.shared_kb.contribution);
+  const lines = [`Shared KB contribution mode: ${mode}`];
+  if (config.shared_kb.contribution === "local_only") {
+    lines.push("Barry will not send shared KB contributions.");
+    lines.push("Use preview-only to inspect anonymized payloads before considering sharing.");
+  } else if (config.shared_kb.contribution === "preview_only") {
+    lines.push("Barry can show shared KB payloads locally, but sending remains disabled.");
+  } else {
+    lines.push("Barry may send shared KB contributions only when a send command is invoked.");
+    lines.push("Remote shared KB search is enabled.");
+  }
+  return lines.join("\n");
 }
 
 function formatChangelogWriteMessage(result: WriteChangelogResult): string {
@@ -414,7 +544,7 @@ function formatCliError(error: unknown): string {
   if (error.usage) lines.push("", "Usage:", `  ${error.usage}`);
   if (error.options) {
     for (const [name, values] of Object.entries(error.options)) {
-      lines.push("", `Available --${name} values:`);
+      lines.push("", name === "mode" ? "Available mode values:" : `Available --${name} values:`);
       for (const value of values) lines.push(`  ${value}`);
     }
   }
@@ -438,6 +568,12 @@ function commandUsage(command: string): string | undefined {
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
+    kb: "barry-cache kb <validate|build|search|sharing> [--json]",
+    "kb validate": "barry-cache kb validate --source /path/to/shared-kb [--json]",
+    "kb build": "barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--private-key private.pem --public-key public.pem] [--json]",
+    "kb search": 'barry-cache kb search --source /path-or-url --query "..." [--include-reviewed] [--json]',
+    "kb sharing": "barry-cache kb sharing <status|set> [--json]",
+    "kb sharing set": "barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]",
     changelog: "barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--file CHANGELOG.md] [--json]",
     import: "barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]",
     review: "barry-cache review [--port 8787] [--open] [--json]",
@@ -461,6 +597,11 @@ Usage:
   barry-cache resume --task "..." [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
   barry-cache failure record --summary "..." --expected "..." --actual "..." [--json]
+  barry-cache kb validate --source /path/to/shared-kb [--json]
+  barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--json]
+  barry-cache kb search --source /path-or-url --query "..." [--json]
+  barry-cache kb sharing status [--json]
+  barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]
   barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--json]
   barry-cache adr new --title "..." [--status active] [--tags context,agents]
   barry-cache adr list [--json]

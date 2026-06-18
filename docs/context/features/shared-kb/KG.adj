@@ -1,0 +1,10 @@
+shared-kb validates anonymized-lessons
+shared-kb builds signed-static-snapshots
+shared-kb publishes through cloudflare-r2-pages
+shared-kb search uses generated-index
+revocations remove trusted-lessons
+git-pr-review gates published-lessons
+shared-kb contribution defaults-local-only
+shared-kb contribution configured-in-local-cache
+kb-sharing-cli manages contribution-mode
+remote-shared-kb-search requires share-enabled-mode

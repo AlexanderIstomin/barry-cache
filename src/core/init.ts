@@ -109,7 +109,7 @@ async function patchCodexAgents(
 async function patchGitignore(repo: string, dryRun: boolean, result: InitResult): Promise<void> {
   const path = repoPath(repo, ".gitignore");
   const existing = (await exists(path)) ? await readText(path) : "";
-  const body = ".context-state/\n.context-cache/\n";
+  const body = ".context-state/\n.context-cache/\n.barry-cache/\n";
   const content = applyManagedBlock(existing, body);
   record(result, await writeIfChanged(path, content, dryRun), ".gitignore");
 }

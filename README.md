@@ -46,6 +46,9 @@ npx barry-cache init --dry-run
 
 ## Command Reference
 
+Shared/community solutions KB publishing is documented in [Shared KB Cloudflare Distribution](docs/shared-kb-cloudflare.md).
+Shared KB contribution is disabled by default; inspect or change the repo-local mode with `barry-cache kb sharing status` and `barry-cache kb sharing set local-only|preview-only|share-enabled`. Remote shared KB search requires `share-enabled`; local snapshot search remains available in every mode.
+
 ### `barry-cache init`
 
 Creates or updates the Barry Cache project structure.

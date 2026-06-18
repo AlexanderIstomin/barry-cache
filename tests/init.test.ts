@@ -72,6 +72,9 @@ describe("initProject", () => {
       expect(maintenance).toContain("barry-cache failure record");
       expect(maintenance).toContain("link the follow-up finalize with --fixes");
 
+      const gitignore = await readFile(join(repo, ".gitignore"), "utf8");
+      expect(gitignore).toContain(".barry-cache/");
+
       const validation = await validateProject({ repo });
       expect(validation.ok).toBe(true);
     });

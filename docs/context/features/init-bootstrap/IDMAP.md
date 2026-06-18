@@ -11,5 +11,6 @@
 - `ADR_GUIDANCE_ADR`: docs/context/adrs/ADR-0002-include-adr-guidance-in-generated-agent-instructions.md
 - `VALIDATION_FAILURE_ADR`: docs/context/adrs/ADR-0004-record-validation-failures-as-operational-contradictions.md
 - `FACT_UPDATE_ADR`: docs/context/adrs/ADR-0006-clarify-canonical-fact-updates-in-agent-instructions.md
+- `SHARED_KB_OPT_IN_ADR`: docs/context/adrs/ADR-0008-require-explicit-opt-in-for-shared-kb-contribution.md
 - `PKG`: package.json
 - `AGENT`: AGENTS.md
