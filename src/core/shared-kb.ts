@@ -199,6 +199,54 @@ export async function validateSharedKbSource({ source }: { source: string }): Pr
   return { ok: errors.length === 0, errors, warnings, lessons, revocations };
 }
 
+export interface SharedKbSnapshotArtifacts {
+  lessonRows: string;
+  revocationRows: string;
+  indexJson: string;
+  manifestJson: string;
+  manifest: SharedKbManifest;
+  publishedLessons: SharedKbLesson[];
+}
+
+export function buildSharedKbSnapshotArtifacts(input: {
+  lessons: SharedKbLesson[];
+  revocations: SharedKbRevocation[];
+  generatedAt: string;
+}): SharedKbSnapshotArtifacts {
+  const revoked = new Set(input.revocations.filter((record) => record.status === "revoked").map((record) => record.target));
+  const lessons = input.lessons
+    .filter((lesson) => sharedKbPublishedStatuses.includes(lesson.status as typeof sharedKbPublishedStatuses[number]))
+    .filter((lesson) => !revoked.has(lesson.id))
+    .sort((a, b) => a.updated_at.localeCompare(b.updated_at) || a.id.localeCompare(b.id));
+  const index: SharedKbSearchIndex = {
+    version: 1,
+    generated_at: input.generatedAt,
+    items: lessons.map(searchItemForLesson),
+  };
+  const lessonRows = `${lessons.map((lesson) => JSON.stringify(lesson)).join("\n")}${lessons.length ? "\n" : ""}`;
+  const revocationRows = `${input.revocations.map((record) => JSON.stringify(record)).join("\n")}${input.revocations.length ? "\n" : ""}`;
+  const indexJson = `${JSON.stringify(index, null, 2)}\n`;
+  const files: SharedKbManifestFile[] = [
+    manifestFile("lessons/lessons.jsonl", lessonRows, lessons.length),
+    manifestFile("revocations.jsonl", revocationRows, input.revocations.length),
+    manifestFile("indexes/search-index.json", indexJson, index.items.length),
+  ];
+  const manifest: SharedKbManifest = {
+    version: 1,
+    generated_at: input.generatedAt,
+    source: "barry-shared-kb",
+    counts: {
+      lessons: lessons.length,
+      revoked: revoked.size,
+    },
+    files,
+    lessons: lessons.map((lesson) => lesson.id),
+    revoked: [...revoked].sort(),
+  };
+  const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
+  return { lessonRows, revocationRows, indexJson, manifestJson, manifest, publishedLessons: lessons };
+}
+
 export async function buildSharedKbSnapshot(options: {
   source: string;
   out: string;
@@ -211,42 +259,16 @@ export async function buildSharedKbSnapshot(options: {
     throw new Error(`Shared KB source is invalid:\n${rendered}`);
   }
 
-  const revoked = new Set(validation.revocations.filter((record) => record.status === "revoked").map((record) => record.target));
-  const lessons = validation.lessons
-    .filter((lesson) => sharedKbPublishedStatuses.includes(lesson.status as typeof sharedKbPublishedStatuses[number]))
-    .filter((lesson) => !revoked.has(lesson.id))
-    .sort((a, b) => a.updated_at.localeCompare(b.updated_at) || a.id.localeCompare(b.id));
-  const index: SharedKbSearchIndex = {
-    version: 1,
-    generated_at: new Date().toISOString(),
-    items: lessons.map(searchItemForLesson),
-  };
-  const lessonRows = `${lessons.map((lesson) => JSON.stringify(lesson)).join("\n")}${lessons.length ? "\n" : ""}`;
-  const revocationRows = `${validation.revocations.map((record) => JSON.stringify(record)).join("\n")}${validation.revocations.length ? "\n" : ""}`;
-  const indexJson = `${JSON.stringify(index, null, 2)}\n`;
+  const artifacts = buildSharedKbSnapshotArtifacts({
+    lessons: validation.lessons,
+    revocations: validation.revocations,
+    generatedAt: new Date().toISOString(),
+  });
 
-  await writeText(join(options.out, "lessons/lessons.jsonl"), lessonRows);
-  await writeText(join(options.out, "revocations.jsonl"), revocationRows);
-  await writeText(join(options.out, "indexes/search-index.json"), indexJson);
-
-  const files: SharedKbManifestFile[] = [
-    manifestFile("lessons/lessons.jsonl", lessonRows, lessons.length),
-    manifestFile("revocations.jsonl", revocationRows, validation.revocations.length),
-    manifestFile("indexes/search-index.json", indexJson, index.items.length),
-  ];
-  const manifest: SharedKbManifest = {
-    version: 1,
-    generated_at: new Date().toISOString(),
-    source: "barry-shared-kb",
-    counts: {
-      lessons: lessons.length,
-      revoked: revoked.size,
-    },
-    files,
-    lessons: lessons.map((lesson) => lesson.id),
-    revoked: [...revoked].sort(),
-  };
-  await writeText(join(options.out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeText(join(options.out, "lessons/lessons.jsonl"), artifacts.lessonRows);
+  await writeText(join(options.out, "revocations.jsonl"), artifacts.revocationRows);
+  await writeText(join(options.out, "indexes/search-index.json"), artifacts.indexJson);
+  await writeText(join(options.out, "manifest.json"), artifacts.manifestJson);
   if (options.privateKeyPath && options.publicKeyPath) {
     await writeManifestSignature({
       manifestPath: join(options.out, "manifest.json"),
@@ -255,7 +277,7 @@ export async function buildSharedKbSnapshot(options: {
       publicKeyPath: options.publicKeyPath,
     });
   }
-  return { ok: true, out: options.out, published: lessons.length, manifest };
+  return { ok: true, out: options.out, published: artifacts.publishedLessons.length, manifest: artifacts.manifest };
 }
 
 export async function verifySharedKbManifestSignature(options: { manifestPath: string; signaturePath: string }): Promise<boolean> {

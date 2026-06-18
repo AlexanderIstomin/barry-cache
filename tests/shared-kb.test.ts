@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { buildSharedKbSnapshot, searchSharedKb, validateSharedKbSource, validateSharedKbLesson, verifySharedKbManifestSignature } from "../src/core/shared-kb";
+import { buildSharedKbSnapshot, buildSharedKbSnapshotArtifacts, searchSharedKb, validateSharedKbSource, validateSharedKbLesson, verifySharedKbManifestSignature, type SharedKbLesson } from "../src/core/shared-kb";
 import { withTempRepo } from "./helpers";
 
 function validLesson(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -166,5 +166,23 @@ test("builds manifest signatures and verifies them", async () => {
       manifestPath: join(out, "manifest.json"),
       signaturePath: join(out, "manifest.sig"),
     })).toBe(false);
+  });
+});
+
+describe("shared KB snapshot artifacts", () => {
+  test("publishes trusted lessons, excludes revoked, and is deterministic for a fixed timestamp", () => {
+    const trusted = validLesson({ id: "lesson-20260601-aaaa1111", status: "trusted" }) as unknown as SharedKbLesson;
+    const revokedLesson = validLesson({ id: "lesson-20260601-bbbb2222", status: "trusted", title: "Bad lesson" }) as unknown as SharedKbLesson;
+    const revocations = [{ id: "rev-1", target: "lesson-20260601-bbbb2222", status: "revoked" as const, reason: "wrong", updated_at: "2026-06-02T00:00:00.000Z" }];
+
+    const artifacts = buildSharedKbSnapshotArtifacts({ lessons: [trusted, revokedLesson], revocations, generatedAt: "2026-06-03T00:00:00.000Z" });
+
+    expect(artifacts.publishedLessons.map((l) => l.id)).toEqual(["lesson-20260601-aaaa1111"]);
+    expect(artifacts.manifest.counts).toEqual({ lessons: 1, revoked: 1 });
+    expect(artifacts.manifest.generated_at).toBe("2026-06-03T00:00:00.000Z");
+    expect(artifacts.lessonRows.endsWith("\n")).toBe(true);
+
+    const again = buildSharedKbSnapshotArtifacts({ lessons: [trusted, revokedLesson], revocations, generatedAt: "2026-06-03T00:00:00.000Z" });
+    expect(again.manifestJson).toBe(artifacts.manifestJson);
   });
 });
