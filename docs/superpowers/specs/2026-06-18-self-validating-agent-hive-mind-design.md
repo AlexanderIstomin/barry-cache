@@ -214,9 +214,11 @@ reputation-as-access.
   decisions are **superseded** by live D1 + automated maturation. SP4 ships a superseding ADR.
 - **ADR-0008** (explicit opt-in): the privacy default (`local_only`) and explicit modes **stay**.
   The *access-reciprocity* stance evolves into reputation-as-access; SP4 ships an ADR refining it.
-- New ADRs (numbers assigned at creation; note Plan A already reserves ADR-0009 and Plan B
-  ADR-0010): brain contract / vendor independence; live D1 brain replacing static-only storage;
-  automated staged-maturation trust gate; reputation-as-access incentive model.
+- New ADRs (numbers assigned at creation): **ADR-0009 ships the self-hostable Brain server**
+  (vendor-neutral contract; Docker+SQLite v1; supersedes ADR-0007's storage/human-review gate
+  for live deployments while preserving its signed-snapshot distribution). Still to come: live
+  D1 brain adapter, automated staged-maturation trust gate, and reputation-as-access incentive
+  model (the future Plan A/B ADRs take the next free numbers).
 
 ## 6. Risks and mitigations
 

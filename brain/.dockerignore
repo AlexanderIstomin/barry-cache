@@ -1,0 +1,6 @@
+node_modules
+dist
+.brain-data
+brain-data
+**/*.test.ts
+docs

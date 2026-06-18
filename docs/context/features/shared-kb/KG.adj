@@ -8,3 +8,10 @@ shared-kb contribution defaults-local-only
 shared-kb contribution configured-in-local-cache
 kb-sharing-cli manages contribution-mode
 remote-shared-kb-search requires share-enabled-mode
+brain-server hosts vendor-neutral-contract
+brain-server reuses shared-kb-core
+brain-server stores lessons-in-sqlite
+brain-server signs snapshots-with-pinned-key
+brain-server supports company-and-global-trust-policy
+brain-server ships as docker-sqlite-container
+barry-clients point-at private-or-global-brain

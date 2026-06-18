@@ -10,4 +10,16 @@
 - `SHARED_KB_DOC`: docs/shared-kb-cloudflare.md
 - `SHARED_KB_ADR`: docs/context/adrs/ADR-0007-store-shared-solutions-kb-as-signed-static-packs.md
 - `SHARED_KB_OPT_IN_ADR`: docs/context/adrs/ADR-0008-require-explicit-opt-in-for-shared-kb-contribution.md
+- `BRAIN_SERVICE`: brain/core/brain.ts
+- `BRAIN_STORE`: brain/core/store.ts
+- `BRAIN_STORE_SQLITE`: brain/core/store-sqlite.ts
+- `BRAIN_IDENTITY`: brain/core/identity.ts
+- `BRAIN_CONFIG`: brain/core/config.ts
+- `BRAIN_ROUTER`: brain/http/router.ts
+- `BRAIN_RUNTIME`: brain/runtime/bun-server.ts
+- `BRAIN_CLI`: brain/cli.ts
+- `BRAIN_CONFORMANCE`: brain/conformance/suite.ts
+- `BRAIN_DOC`: docs/brain-self-host.md
+- `BRAIN_ADR`: docs/context/adrs/ADR-0009-ship-self-hostable-brain-server-for-distributed-shared-kb.md
+- `HIVE_MIND_SPEC`: docs/superpowers/specs/2026-06-18-self-validating-agent-hive-mind-design.md
 - `README`: README.md

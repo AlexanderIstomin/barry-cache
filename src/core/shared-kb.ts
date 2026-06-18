@@ -324,7 +324,7 @@ async function loadSearchIndex(source: string): Promise<SharedKbSearchIndex> {
   return JSON.parse(await readTextIfExists(join(source, "indexes/search-index.json"))) as SharedKbSearchIndex;
 }
 
-function searchItemForLesson(lesson: SharedKbLesson): SharedKbSearchItem {
+export function searchItemForLesson(lesson: SharedKbLesson): SharedKbSearchItem {
   const summary = `${lesson.problem} ${lesson.recommendation}`;
   return {
     id: lesson.id,
@@ -378,12 +378,22 @@ async function writeManifestSignature(options: {
   await writeText(options.signaturePath, `${JSON.stringify(signature, null, 2)}\n`);
 }
 
-function tokens(input: string): string[] {
+export function tokens(input: string): string[] {
   return Array.from(new Set(input.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 3)));
 }
 
-function scoreText(text: string, queryTokens: string[]): number {
+export function scoreText(text: string, queryTokens: string[]): number {
   return queryTokens.reduce((score, token) => score + (text.includes(token) ? 1 : 0), 0);
+}
+
+export function signManifestJson(manifestJson: string, privateKeyPem: string, publicKeyPem: string): SharedKbManifestSignature {
+  const bytes = Buffer.from(manifestJson);
+  return {
+    algorithm: "ed25519",
+    public_key: Buffer.from(publicKeyPem).toString("base64"),
+    signature: sign(null, bytes, createPrivateKey(privateKeyPem)).toString("base64"),
+    signed_payload_sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+  };
 }
 
 function validateRevocation(value: unknown): string | null {
