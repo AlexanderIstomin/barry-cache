@@ -280,6 +280,31 @@ describe("kb cli", () => {
     });
   });
 
+  test("kb attest requires share-enabled mode", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "preview-only"]);
+      const result = await runCli(repo, ["kb", "attest", "--lesson-id", "lesson-20260601-aaaa1111", "--brain", "https://brain.example.com"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("share-enabled");
+    });
+  });
+
+  test("end-to-end: kb attest submits an outcome attestation to a Brain", async () => {
+    await withTempRepo(async (repo) => {
+      await withBrain(async (url) => {
+        await runCli(repo, ["kb", "sharing", "set", "share-enabled"]);
+        const propose = await runCli(repo, [...proposeArgs, "--json"]);
+        const lessonId = JSON.parse(propose.stdout).lesson.id as string;
+        await runCli(repo, ["kb", "submit", "--brain", url]);
+
+        const attest = await runCli(repo, ["kb", "attest", "--lesson-id", lessonId, "--result", "confirmed", "--evidence-type", "observed_success", "--brain", url]);
+        expect(attest.stderr).toBe("");
+        expect(attest.code).toBe(0);
+        expect(attest.stdout).toContain("Attested confirmed");
+      });
+    });
+  });
+
   test("end-to-end: propose a lesson and submit it to a running Brain", async () => {
     await withTempRepo(async (repo) => {
       await withBrain(async (url) => {

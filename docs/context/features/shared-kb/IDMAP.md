@@ -29,6 +29,13 @@
 - `SHARED_KB_HARVEST`: src/core/shared-kb-harvest.ts
 - `SHARED_KB_HARVEST_TEST`: tests/shared-kb-harvest.test.ts
 - `CLI_FINALIZE_TEST`: tests/cli-finalize.test.ts
+- `SHARED_KB_ATTESTATION`: src/core/shared-kb-attestation.ts
+- `SHARED_KB_ATTESTATION_TEST`: tests/shared-kb-attestation.test.ts
+- `SHARED_KB_REPUTATION`: src/core/shared-kb-reputation.ts
+- `SHARED_KB_REPUTATION_TEST`: tests/shared-kb-reputation.test.ts
+- `BRAIN_MATURATION`: brain/core/maturation.ts
+- `BRAIN_MATURATION_TEST`: brain/tests/maturation.test.ts
+- `SELF_VALIDATION_ADR`: docs/context/adrs/ADR-0010-self-validate-shared-kb-via-attestation-reputation-and-staged-maturation.md
 - `SHARED_KB_INTAKE_TEST`: tests/shared-kb-intake.test.ts
 - `SHARED_KB_PROPOSAL_TEST`: tests/shared-kb-proposal.test.ts
 - `SHARED_KB_BRAIN_CLIENT_TEST`: tests/shared-kb-brain-client.test.ts

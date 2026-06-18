@@ -37,6 +37,16 @@ export function createSqliteStore(path: string): BrainStore {
       const rows = db.query(`SELECT doc FROM lessons ORDER BY updated_at, id`).all() as Array<{ doc: string }>;
       return rows.map((r) => JSON.parse(r.doc) as SharedKbLesson);
     },
+    async listLessonsWithMeta() {
+      const rows = db.query(`SELECT doc, received_at FROM lessons ORDER BY updated_at, id`).all() as Array<{ doc: string; received_at: string }>;
+      return rows.map((r) => ({ lesson: JSON.parse(r.doc) as SharedKbLesson, received_at: r.received_at }));
+    },
+    async updateLessonStatus(id, status) {
+      const row = db.query(`SELECT doc FROM lessons WHERE id = ?`).get(id) as { doc: string } | null;
+      if (!row) return;
+      const lesson = { ...(JSON.parse(row.doc) as SharedKbLesson), status };
+      db.query(`UPDATE lessons SET status = ?, doc = ? WHERE id = ?`).run(status, JSON.stringify(lesson), id);
+    },
     async addAttestation(att) {
       db.query(`INSERT OR REPLACE INTO attestations (id, lesson_id, validator_id, doc) VALUES (?, ?, ?, ?)`).run(
         att.id,
@@ -47,6 +57,10 @@ export function createSqliteStore(path: string): BrainStore {
     },
     async listAttestations(lessonId) {
       const rows = db.query(`SELECT doc FROM attestations WHERE lesson_id = ? ORDER BY id`).all(lessonId) as Array<{ doc: string }>;
+      return rows.map((r) => JSON.parse(r.doc) as StoredAttestation);
+    },
+    async listAllAttestations() {
+      const rows = db.query(`SELECT doc FROM attestations ORDER BY id`).all() as Array<{ doc: string }>;
       return rows.map((r) => JSON.parse(r.doc) as StoredAttestation);
     },
     async addRevocation(rev) {

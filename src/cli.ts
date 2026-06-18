@@ -10,7 +10,7 @@ import { buildSharedKbSnapshot, searchSharedKb, validateSharedKbSource, type Sha
 import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig } from "./core/shared-kb-config";
 import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
-import { buildLessonIntakeBatch, submitIntakeBatch } from "./core/shared-kb-brain-client";
+import { buildAttestation, buildLessonIntakeBatch, submitAttestation, submitIntakeBatch } from "./core/shared-kb-brain-client";
 import { buildHarvestCandidate, readLatestHarvestSources, type HarvestCandidate, type HarvestSource } from "./core/shared-kb-harvest";
 import type { AgentInstructionTarget, InitResult } from "./core/types";
 import { validateProject } from "./core/validate";
@@ -422,9 +422,55 @@ async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean):
     return;
   }
 
+  if (action === "attest") {
+    await handleKbAttestCommand(parsed, repo, json);
+    return;
+  }
+
   throw new CliArgumentError(action ? `Unknown KB action: ${action}` : "Missing KB action", {
     usage: commandUsage("kb"),
   });
+}
+
+const attestResults = ["confirmed", "contradicted", "not_applicable"] as const;
+const attestEvidence = ["observed_success", "observed_failure", "static_review"] as const;
+
+async function handleKbAttestCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const config = await readSharedKbConfig({ repo });
+  if (config.shared_kb.contribution !== "share_enabled") {
+    throw new CliArgumentError("Shared KB attest requires share-enabled mode. Run `barry-cache kb sharing set share-enabled`.", {
+      usage: commandUsage("kb sharing set"),
+      options: { mode: [...sharedKbContributionModes] },
+    });
+  }
+  const lessonId = requiredString(parsed, "lesson-id", commandUsage("kb attest"));
+  const result = optionalChoice(parsed, "result", attestResults, "confirmed", commandUsage("kb attest"));
+  const evidenceType = optionalChoice(parsed, "evidence-type", attestEvidence, "observed_success", commandUsage("kb attest"));
+  const confidenceRaw = optionalString(parsed, "confidence", commandUsage("kb attest"));
+  const confidence = confidenceRaw ? Number(confidenceRaw) : 0.8;
+  if (!Number.isFinite(confidence) || confidence < 0.01 || confidence > 0.99) {
+    throw new CliArgumentError("--confidence must be a number between 0.01 and 0.99", { usage: commandUsage("kb attest") });
+  }
+  const contextTags = splitCsv(optionalString(parsed, "context-tags", commandUsage("kb attest")) ?? "");
+  const upstreamSeen = splitCsv(optionalString(parsed, "upstream-seen", commandUsage("kb attest")) ?? "");
+  const brainUrl = optionalString(parsed, "brain", commandUsage("kb attest")) ?? config.shared_kb.brain?.url;
+  if (!brainUrl) {
+    throw new CliArgumentError("No Brain configured. Pass --brain <url> or set shared_kb.brain.url in .barry-cache/config.json.", { usage: commandUsage("kb attest") });
+  }
+  const identity = await loadOrCreateValidatorIdentity({ repo, now: new Date().toISOString() });
+  const attestation = buildAttestation({ identity, lessonId, result, confidence, contextTags, evidenceType, upstreamSeen, now: new Date().toISOString() });
+
+  if (parsed.flags.get("dry-run") === true) {
+    print({ brain: brainUrl, attestation }, json, `Dry run — would attest ${result}/${evidenceType} on ${lessonId} to ${brainUrl}/v1/attest.`);
+    return;
+  }
+  const res = await submitAttestation({ url: brainUrl, attestation });
+  if (!res.ok) {
+    process.exitCode = 1;
+    print(res, json, `Shared KB attest failed (${res.status}): ${res.error ?? "unknown error"}`);
+    return;
+  }
+  print({ ...res, attestation_id: attestation.id, lesson_id: lessonId }, json, `Attested ${result}/${evidenceType} on ${lessonId} to ${brainUrl}.`);
 }
 
 const harvestKinds = ["success", "failure"] as const;
@@ -712,13 +758,14 @@ function commandUsage(command: string): string | undefined {
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
-    kb: "barry-cache kb <validate|build|search|harvest|propose|submit|sharing> [--json]",
+    kb: "barry-cache kb <validate|build|search|harvest|propose|submit|attest|sharing> [--json]",
     "kb validate": "barry-cache kb validate --source /path/to/shared-kb [--json]",
     "kb build": "barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--private-key private.pem --public-key public.pem] [--json]",
     "kb search": 'barry-cache kb search --source /path-or-url --query "..." [--include-reviewed] [--json]',
     "kb harvest": 'barry-cache kb harvest [--kind success|failure --summary "..." [--expected "..." --actual "..." --files a,b]] [--json]',
     "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--confidence low|medium|high] [--dry-run] [--json]',
     "kb submit": "barry-cache kb submit [--brain https://your-brain] [--dry-run] [--json]",
+    "kb attest": 'barry-cache kb attest --lesson-id lesson-... [--result confirmed|contradicted|not_applicable] [--evidence-type observed_success|observed_failure|static_review] [--confidence 0.8] [--context-tags a,b] [--upstream-seen id1,id2] [--brain https://your-brain] [--dry-run] [--json]',
     "kb sharing": "barry-cache kb sharing <status|set> [--json]",
     "kb sharing set": "barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]",
     changelog: "barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--file CHANGELOG.md] [--json]",

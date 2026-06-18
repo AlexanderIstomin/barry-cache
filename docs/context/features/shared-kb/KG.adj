@@ -23,3 +23,11 @@ kb-harvest drafts candidate-from-latest-run
 kb-harvest emits sanitization-checklist
 harvest gate skips trivial-runs
 finalize nudges harvest-when-sharing-enabled
+kb-attest reports outcome-on-use
+attestations bound-to signing-key
+reputation scores from-outcome-grounded-attestations
+reputation discounts copied-evidence
+maturation promotes reviewed-to-trusted
+maturation demotes on-credible-contradiction
+global-policy self-validates via-attestation-reputation-maturation
+company-policy keeps immediate-trust

@@ -68,9 +68,12 @@ brain.
 
 - `company` (default): submitted lessons become usable (`trusted`) immediately — appropriate
   for an internal team where validators are known.
-- `global`: stricter — submitted lessons land as `reviewed` and stay out of default search.
-  The strict staged-maturation + reputation engine that promotes `reviewed → trusted`
-  automatically is a separate, later component; until then, `global` is conservative by design.
+- `global`: self-validating — submitted lessons land as `reviewed` (out of default search) and
+  are promoted to `trusted` only after enough independent, outcome-grounded attestations across
+  diverse contexts (with a positive reputation-weighted score and a minimum observation window).
+  A credible `observed_failure` that drives the score net-negative demotes a lesson to
+  `challenged`. The Brain re-scores after each accepted attestation. Agents report outcomes with
+  `barry-cache kb attest`. Maturation thresholds are tunable defaults.
 
 ## HTTP contract
 

@@ -7,6 +7,15 @@ import { createBrain, type IntakeItem } from "../core/brain";
 import { createSqliteStore } from "../core/store-sqlite";
 import { loadOrCreateBrainIdentity } from "../core/identity";
 import { deriveValidatorId, signIntakeBatch } from "../../src/core/shared-kb-intake";
+import { signAttestation, type SharedKbAttestation } from "../../src/core/shared-kb-attestation";
+
+function signedAttestation(lessonId: string, over: Partial<SharedKbAttestation> = {}) {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pub = publicKey.export({ type: "spki", format: "pem" }).toString();
+  const priv = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const pubB64 = Buffer.from(pub).toString("base64");
+  return signAttestation({ id: "att-1", lesson_id: lessonId, validator_id: deriveValidatorId(pubB64), result: "confirmed", confidence: 0.8, context_tags: ["cli"], evidence_type: "observed_success", upstream_seen: [], created_at: "2026-06-18T00:00:00.000Z", public_key: pubB64, ...over }, priv);
+}
 
 function signedBatch(items: IntakeItem[]) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
@@ -59,6 +68,28 @@ test("company brain accepts a valid signed lesson batch and makes it searchable 
   await cleanup();
 });
 
+test("global policy: lesson promotes to trusted after independent confirmations, then demotes on credible contradictions", async () => {
+  const { brain, cleanup } = await makeBrain("global");
+  await brain.intake(signedBatch([{ type: "lesson", record: lesson }]));
+  expect((await brain.getLesson(lesson.id))?.lesson.status).toBe("reviewed");
+  expect((await brain.search("cli")).length).toBe(0); // reviewed hidden by default
+
+  const tags = ["cli", "typescript", "api"];
+  for (let i = 0; i < 3; i++) {
+    const r = await brain.attest(signedAttestation(lesson.id, { id: `confirm-${i}`, context_tags: [tags[i]!] }));
+    expect(r.ok).toBe(true);
+  }
+  expect((await brain.getLesson(lesson.id))?.lesson.status).toBe("trusted");
+  expect((await brain.search("cli")).map((h) => h.id)).toContain(lesson.id);
+
+  for (let i = 0; i < 3; i++) {
+    await brain.attest(signedAttestation(lesson.id, { id: `contra-${i}`, result: "contradicted", evidence_type: "observed_failure", confidence: 0.95, context_tags: ["cli"] }));
+  }
+  expect((await brain.getLesson(lesson.id))?.lesson.status).toBe("challenged");
+  expect((await brain.search("cli")).map((h) => h.id)).not.toContain(lesson.id);
+  await cleanup();
+});
+
 test("global brain stores accepted lessons as reviewed (not trusted by default)", async () => {
   const { brain, cleanup } = await makeBrain("global");
   await brain.intake(signedBatch([{ type: "lesson", record: lesson }]));
@@ -99,17 +130,18 @@ test("intake rejects a batch whose signature does not verify", async () => {
 test("attest stores an attestation for an existing lesson and rejects unknown lessons", async () => {
   const { brain, cleanup } = await makeBrain("company");
   await brain.intake(signedBatch([{ type: "lesson", record: lesson }]));
-  const ok = await brain.attest({ id: "att-1", lesson_id: lesson.id, validator_id: "v", result: "confirmed", confidence: 0.8, context_tags: ["cli"], evidence_type: "observed_success", upstream_seen: [], created_at: "2026-06-18T00:00:00.000Z", public_key: "pk", signature: "sig" });
+  const ok = await brain.attest(signedAttestation(lesson.id));
   expect(ok.ok).toBe(true);
-  const bad = await brain.attest({ id: "att-2", lesson_id: "lesson-nope", validator_id: "v", result: "confirmed", confidence: 0.8, context_tags: [], evidence_type: "static_review", upstream_seen: [], created_at: "2026-06-18T00:00:00.000Z", public_key: "pk", signature: "sig" });
+  const bad = await brain.attest(signedAttestation("lesson-nope", { id: "att-2" }));
   expect(bad.ok).toBe(false);
+  expect(bad.reason).toContain("unknown lesson");
   await cleanup();
 });
 
 test("getLesson returns the lesson and its attestation count", async () => {
   const { brain, cleanup } = await makeBrain("company");
   await brain.intake(signedBatch([{ type: "lesson", record: lesson }]));
-  await brain.attest({ id: "att-1", lesson_id: lesson.id, validator_id: "v", result: "confirmed", confidence: 0.8, context_tags: [], evidence_type: "observed_success", upstream_seen: [], created_at: "2026-06-18T00:00:00.000Z", public_key: "pk", signature: "sig" });
+  await brain.attest(signedAttestation(lesson.id));
   const found = await brain.getLesson(lesson.id);
   expect(found?.attestations).toBe(1);
   expect(found?.lesson.id).toBe(lesson.id);

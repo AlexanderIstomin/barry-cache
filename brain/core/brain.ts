@@ -11,6 +11,9 @@ import {
   type SharedKbStatus,
 } from "../../src/core/shared-kb";
 import { deriveValidatorId, verifyIntakeBatchSignature, type IntakeBatch, type IntakeItem } from "../../src/core/shared-kb-intake";
+import { validateAttestation, verifyAttestationSignature } from "../../src/core/shared-kb-attestation";
+import { computeReputation } from "../../src/core/shared-kb-reputation";
+import { decideLessonStatus, defaultGlobalThresholds, type MaturationThresholds } from "./maturation";
 import type { BrainIdentity } from "./identity";
 import type { BrainStore, StoredAttestation } from "./store";
 
@@ -41,23 +44,39 @@ export interface Brain {
   snapshot(): Promise<SharedKbSnapshotArtifacts & { signature: SharedKbManifestSignature }>;
 }
 
-export function validateAttestation(value: unknown): string | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return "attestation must be an object";
-  const a = value as Record<string, unknown>;
-  for (const f of ["id", "lesson_id", "validator_id", "created_at", "public_key", "signature"]) {
-    if (typeof a[f] !== "string" || (a[f] as string).trim() === "") return `invalid field: ${f}`;
-  }
-  if (!["confirmed", "contradicted", "not_applicable"].includes(String(a.result))) return "invalid field: result";
-  if (!["observed_success", "observed_failure", "static_review"].includes(String(a.evidence_type))) return "invalid field: evidence_type";
-  if (typeof a.confidence !== "number" || a.confidence < 0.01 || a.confidence > 0.99) return "invalid field: confidence";
-  if (!Array.isArray(a.context_tags) || (a.context_tags as unknown[]).some((t) => typeof t !== "string")) return "invalid field: context_tags";
-  if (!Array.isArray(a.upstream_seen) || (a.upstream_seen as unknown[]).some((t) => typeof t !== "string")) return "invalid field: upstream_seen";
-  return null;
-}
-
-export function createBrain(opts: { store: BrainStore; identity: BrainIdentity; trustPolicy: TrustPolicy; now: () => string }): Brain {
+export function createBrain(opts: { store: BrainStore; identity: BrainIdentity; trustPolicy: TrustPolicy; now: () => string; thresholds?: MaturationThresholds }): Brain {
   const { store, identity, trustPolicy, now } = opts;
+  const thresholds = opts.thresholds ?? defaultGlobalThresholds;
   const acceptedLessonStatus: SharedKbStatus = trustPolicy === "company" ? "trusted" : "reviewed";
+
+  async function ingestAttestation(record: unknown): Promise<{ ok: boolean; reason?: string }> {
+    const error = validateAttestation(record);
+    if (error) return { ok: false, reason: error };
+    const att = record as StoredAttestation;
+    if (!verifyAttestationSignature(att)) return { ok: false, reason: "attestation signature did not verify" };
+    if (!(await store.getLesson(att.lesson_id))) return { ok: false, reason: "unknown lesson" };
+    await store.addAttestation(att);
+    return { ok: true };
+  }
+
+  // Strict (global) policy: re-score every lesson from all attestations and apply
+  // staged maturation. Company policy keeps immediate trust and skips this.
+  async function recompute(): Promise<void> {
+    if (trustPolicy !== "global") return;
+    const report = computeReputation({ attestations: await store.listAllAttestations() });
+    for (const { lesson, received_at } of await store.listLessonsWithMeta()) {
+      const score = report.lessons[lesson.id] ?? { score: 0.5, raw: 0, positive: 0, negative: 0, not_applicable: 0, independent_sources: 0 };
+      const decision = decideLessonStatus({
+        lesson,
+        receivedAt: received_at,
+        attestations: await store.listAttestations(lesson.id),
+        score,
+        now: now(),
+        thresholds,
+      });
+      if (decision.status !== lesson.status) await store.updateLessonStatus(lesson.id, decision.status);
+    }
+  }
 
   return {
     async intake(batch) {
@@ -81,17 +100,17 @@ export function createBrain(opts: { store: BrainStore; identity: BrainIdentity; 
           await store.upsertLesson(lesson, { submitted_by: validatorId, received_at: now() });
           accepted++;
         } else if (item.type === "attestation") {
-          const error = validateAttestation(item.record);
-          if (error) {
-            rejected.push({ index, reason: error });
+          const result = await ingestAttestation(item.record);
+          if (!result.ok) {
+            rejected.push({ index, reason: result.reason ?? "invalid attestation" });
             continue;
           }
-          await store.addAttestation(item.record as StoredAttestation);
           accepted++;
         } else {
           rejected.push({ index, reason: `unknown item type: ${String((item as { type: unknown }).type)}` });
         }
       }
+      await recompute();
       return { accepted, rejected };
     },
 
@@ -121,10 +140,9 @@ export function createBrain(opts: { store: BrainStore; identity: BrainIdentity; 
     },
 
     async attest(att) {
-      const error = validateAttestation(att);
-      if (error) return { ok: false, reason: error };
-      if (!(await store.getLesson(att.lesson_id))) return { ok: false, reason: "unknown lesson" };
-      await store.addAttestation(att);
+      const result = await ingestAttestation(att);
+      if (!result.ok) return result;
+      await recompute();
       return { ok: true };
     },
 
