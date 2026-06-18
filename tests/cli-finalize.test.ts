@@ -30,6 +30,26 @@ describe("finalize cli", () => {
     });
   });
 
+  test("nudges harvest after a successful finalize only when sharing is enabled", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true, agents: ["codex"] });
+
+      const run = async (args: string[]) => {
+        const proc = Bun.spawn([process.execPath, cliPath, ...args], { cwd: repo, stdout: "pipe", stderr: "pipe" });
+        const stdout = await new Response(proc.stdout).text();
+        await proc.exited;
+        return stdout;
+      };
+
+      const localOnly = await run(["finalize", "--status", "success", "--summary", "Did the thing."]);
+      expect(localOnly).not.toContain("kb harvest");
+
+      await run(["kb", "sharing", "set", "preview-only"]);
+      const shared = await run(["finalize", "--status", "success", "--summary", "Did the thing."]);
+      expect(shared).toContain("barry-cache kb harvest");
+    });
+  });
+
   test("records validation failures and lets follow-up handoffs link fixes", async () => {
     await withTempRepo(async (repo) => {
       await initProject({ repo, yes: true, agents: ["codex"] });

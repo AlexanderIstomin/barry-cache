@@ -26,6 +26,9 @@
 - `SHARED_KB_VALIDATOR_IDENTITY`: src/core/shared-kb-identity.ts
 - `SHARED_KB_PROPOSAL`: src/core/shared-kb-proposal.ts
 - `SHARED_KB_BRAIN_CLIENT`: src/core/shared-kb-brain-client.ts
+- `SHARED_KB_HARVEST`: src/core/shared-kb-harvest.ts
+- `SHARED_KB_HARVEST_TEST`: tests/shared-kb-harvest.test.ts
+- `CLI_FINALIZE_TEST`: tests/cli-finalize.test.ts
 - `SHARED_KB_INTAKE_TEST`: tests/shared-kb-intake.test.ts
 - `SHARED_KB_PROPOSAL_TEST`: tests/shared-kb-proposal.test.ts
 - `SHARED_KB_BRAIN_CLIENT_TEST`: tests/shared-kb-brain-client.test.ts

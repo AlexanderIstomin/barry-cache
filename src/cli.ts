@@ -11,6 +11,7 @@ import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributio
 import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
 import { buildLessonIntakeBatch, submitIntakeBatch } from "./core/shared-kb-brain-client";
+import { buildHarvestCandidate, readLatestHarvestSources, type HarvestCandidate, type HarvestSource } from "./core/shared-kb-harvest";
 import type { AgentInstructionTarget, InitResult } from "./core/types";
 import { validateProject } from "./core/validate";
 
@@ -101,7 +102,9 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           tests: optionalList(parsed, "tests", commandUsage("finalize")),
           fixes: optionalList(parsed, "fixes", commandUsage("finalize")),
         });
-        print(result, json, formatFinalizeMessage(result));
+        const sharing = await readSharedKbConfig({ repo });
+        const harvestNudge = sharing.shared_kb.contribution !== "local_only" && (status === "success" || status === "partial");
+        print(result, json, formatFinalizeMessage(result) + (harvestNudge ? "\nThis work may hold a reusable lesson — run `barry-cache kb harvest` to draft a sanitized shared KB proposal." : ""));
         break;
       }
       case "failure": {
@@ -414,9 +417,63 @@ async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean):
     return;
   }
 
+  if (action === "harvest") {
+    await handleKbHarvestCommand(parsed, repo, json);
+    return;
+  }
+
   throw new CliArgumentError(action ? `Unknown KB action: ${action}` : "Missing KB action", {
     usage: commandUsage("kb"),
   });
+}
+
+const harvestKinds = ["success", "failure"] as const;
+
+async function handleKbHarvestCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const config = await readSharedKbConfig({ repo });
+  if (config.shared_kb.contribution === "local_only") {
+    throw new CliArgumentError("Shared KB harvest requires preview-only or share-enabled mode. Run `barry-cache kb sharing set preview-only`.", {
+      usage: commandUsage("kb sharing set"),
+      options: { mode: [...sharedKbContributionModes] },
+    });
+  }
+
+  const summary = optionalString(parsed, "summary", commandUsage("kb harvest"));
+  let sources: HarvestSource[];
+  if (summary) {
+    const kind = optionalChoice(parsed, "kind", harvestKinds, "success", commandUsage("kb harvest"));
+    sources = [{
+      kind,
+      summary,
+      expected: optionalString(parsed, "expected", commandUsage("kb harvest")),
+      actual: optionalString(parsed, "actual", commandUsage("kb harvest")),
+      files: optionalList(parsed, "files", commandUsage("kb harvest")),
+    }];
+  } else {
+    sources = await readLatestHarvestSources({ repo });
+  }
+
+  const candidates = sources.map(buildHarvestCandidate);
+  print({ candidates }, json, formatHarvestCandidates(candidates));
+}
+
+function formatHarvestCandidates(candidates: HarvestCandidate[]): string {
+  if (candidates.length === 0) {
+    return "No recent runs to harvest. Pass --kind/--summary, or finalize a task first.";
+  }
+  return candidates.map((candidate) => {
+    const header = `Harvest candidate (${candidate.source.kind}) — ${candidate.gate.harvest ? "recommended" : "skipped (low value)"}`;
+    const why = `Why: ${candidate.gate.reasons.join("; ")}`;
+    if (!candidate.gate.harvest) return [header, why].join("\n");
+    return [
+      header,
+      why,
+      "Sanitize before proposing:",
+      ...candidate.checklist.map((item) => `  - ${item}`),
+      "Suggested command (edit before running):",
+      `  ${candidate.proposeCommand}`,
+    ].join("\n");
+  }).join("\n\n");
 }
 
 const sharedKbConfidences = ["low", "medium", "high"] as const;
@@ -655,10 +712,11 @@ function commandUsage(command: string): string | undefined {
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
-    kb: "barry-cache kb <validate|build|search|propose|submit|sharing> [--json]",
+    kb: "barry-cache kb <validate|build|search|harvest|propose|submit|sharing> [--json]",
     "kb validate": "barry-cache kb validate --source /path/to/shared-kb [--json]",
     "kb build": "barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--private-key private.pem --public-key public.pem] [--json]",
     "kb search": 'barry-cache kb search --source /path-or-url --query "..." [--include-reviewed] [--json]',
+    "kb harvest": 'barry-cache kb harvest [--kind success|failure --summary "..." [--expected "..." --actual "..." --files a,b]] [--json]',
     "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--confidence low|medium|high] [--dry-run] [--json]',
     "kb submit": "barry-cache kb submit [--brain https://your-brain] [--dry-run] [--json]",
     "kb sharing": "barry-cache kb sharing <status|set> [--json]",
@@ -689,6 +747,7 @@ Usage:
   barry-cache kb validate --source /path/to/shared-kb [--json]
   barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--json]
   barry-cache kb search --source /path-or-url --query "..." [--json]
+  barry-cache kb harvest [--kind success|failure --summary "..."] [--json]
   barry-cache kb propose lesson --title "..." --problem "..." --recommendation "..." --why "..." [--dry-run] [--json]
   barry-cache kb submit [--brain https://your-brain] [--dry-run] [--json]
   barry-cache kb sharing status [--json]

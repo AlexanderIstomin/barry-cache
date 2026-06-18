@@ -19,3 +19,7 @@ barry-client contributes-via signed-intake-batch
 intake-batch signature-binds full-payload
 kb-propose queues lessons-to-local-outbox
 kb-submit posts outbox-to-brain-intake
+kb-harvest drafts candidate-from-latest-run
+kb-harvest emits sanitization-checklist
+harvest gate skips trivial-runs
+finalize nudges harvest-when-sharing-enabled

@@ -249,6 +249,37 @@ describe("kb cli", () => {
     });
   });
 
+  test("kb harvest is blocked in local-only mode", async () => {
+    await withTempRepo(async (repo) => {
+      const result = await runCli(repo, ["kb", "harvest", "--kind", "failure", "--summary", "Recurring validation failure"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("preview-only or share-enabled");
+    });
+  });
+
+  test("kb harvest drafts a candidate + checklist from explicit flags", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "preview-only"]);
+      const result = await runCli(repo, ["kb", "harvest", "--kind", "failure", "--summary", "Recurring auth schema migration failure", "--expected", "migration succeeds", "--actual", "migration throws"]);
+      expect(result.stderr).toBe("");
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("kb propose lesson");
+      expect(result.stdout.toLowerCase()).toContain("anonymize");
+    });
+  });
+
+  test("kb harvest auto-reads the latest finalized run", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "share-enabled"]);
+      await runCli(repo, ["finalize", "--status", "success", "--summary", "Implemented signed intake batch validation and schema migration guard"]);
+      const result = await runCli(repo, ["kb", "harvest", "--json"]);
+      expect(result.stderr).toBe("");
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.candidates.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   test("end-to-end: propose a lesson and submit it to a running Brain", async () => {
     await withTempRepo(async (repo) => {
       await withBrain(async (url) => {

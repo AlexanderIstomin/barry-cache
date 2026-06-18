@@ -4,6 +4,10 @@ node_modules/
 .context-cache/
 .npmrc
 
+# Brain server runtime data (SQLite db, identity, config)
+brain-data/
+.brain-data/
+
 barry-cache*.tgz
 
 <!-- barry-cache:start -->
