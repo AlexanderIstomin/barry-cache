@@ -1,4 +1,3 @@
-import { createPublicKey, verify } from "node:crypto";
 import {
   buildSharedKbSnapshotArtifacts,
   scoreText,
@@ -11,23 +10,13 @@ import {
   type SharedKbSnapshotArtifacts,
   type SharedKbStatus,
 } from "../../src/core/shared-kb";
+import { verifyIntakeBatchSignature, type IntakeBatch, type IntakeItem } from "../../src/core/shared-kb-intake";
 import type { BrainIdentity } from "./identity";
 import type { BrainStore, StoredAttestation } from "./store";
 
+export type { IntakeBatch, IntakeItem } from "../../src/core/shared-kb-intake";
+
 export type TrustPolicy = "company" | "global";
-
-export interface IntakeItem {
-  type: "lesson" | "attestation";
-  record: unknown;
-}
-
-export interface IntakeBatch {
-  version: 1;
-  validator_id: string;
-  public_key: string; // base64-encoded PEM
-  signature: string; // base64
-  items: IntakeItem[];
-}
 
 export interface IntakeResult {
   accepted: number;
@@ -66,26 +55,13 @@ export function validateAttestation(value: unknown): string | null {
   return null;
 }
 
-function verifyBatchSignature(batch: IntakeBatch): void {
-  const { signature, ...body } = batch;
-  const canonical = JSON.stringify(body, Object.keys(body).sort());
-  const pem = Buffer.from(batch.public_key, "base64").toString("utf8");
-  let ok = false;
-  try {
-    ok = verify(null, Buffer.from(canonical), createPublicKey(pem), Buffer.from(signature, "base64"));
-  } catch {
-    ok = false;
-  }
-  if (!ok) throw new Error("Shared KB intake batch signature did not verify");
-}
-
 export function createBrain(opts: { store: BrainStore; identity: BrainIdentity; trustPolicy: TrustPolicy; now: () => string }): Brain {
   const { store, identity, trustPolicy, now } = opts;
   const acceptedLessonStatus: SharedKbStatus = trustPolicy === "company" ? "trusted" : "reviewed";
 
   return {
     async intake(batch) {
-      verifyBatchSignature(batch);
+      if (!verifyIntakeBatchSignature(batch)) throw new Error("Shared KB intake batch signature did not verify");
       const rejected: IntakeResult["rejected"] = [];
       let accepted = 0;
       for (let index = 0; index < batch.items.length; index++) {

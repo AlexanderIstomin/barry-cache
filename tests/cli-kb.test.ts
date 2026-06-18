@@ -1,8 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { withTempRepo } from "./helpers";
+import { createBrain } from "../brain/core/brain";
+import { createSqliteStore } from "../brain/core/store-sqlite";
+import { loadOrCreateBrainIdentity } from "../brain/core/identity";
+import { createRouter } from "../brain/http/router";
+import { startBunServer } from "../brain/runtime/bun-server";
+
+const proposeArgs = [
+  "kb", "propose", "lesson",
+  "--title", "Treat handoffs as claims until validated",
+  "--problem", "Agents may trust stale handoff summaries.",
+  "--applies-when", "multi-agent coding workflow",
+  "--recommendation", "Validate claims before treating them as durable context.",
+  "--why", "This prevents stale operational memory from becoming canonical truth.",
+  "--avoid-when", "the source cannot be safely anonymized",
+  "--tags", "agents,validation",
+];
+
+async function withBrain(fn: (url: string) => Promise<void>): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "cli-brain-"));
+  const store = createSqliteStore(":memory:");
+  await store.migrate();
+  const identity = await loadOrCreateBrainIdentity({ dir, now: "2026-06-18T00:00:00.000Z" });
+  const brain = createBrain({ store, identity, trustPolicy: "company", now: () => new Date().toISOString() });
+  const server = startBunServer({ router: createRouter({ brain, fingerprint: identity.fingerprint }), port: 0 });
+  try {
+    await fn(`http://localhost:${server.port}`);
+  } finally {
+    server.stop();
+    await store.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+}
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(thisDir, "../src/cli.ts");
@@ -184,6 +217,59 @@ describe("kb cli", () => {
       const parsed = JSON.parse(result.stdout);
       expect(parsed.ok).toBe(true);
       expect(parsed.lessons).toHaveLength(1);
+    });
+  });
+
+  test("kb propose is blocked in local-only mode", async () => {
+    await withTempRepo(async (repo) => {
+      const result = await runCli(repo, proposeArgs);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("preview-only or share-enabled");
+    });
+  });
+
+  test("kb propose --dry-run prints the lesson without queuing it", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "preview-only"]);
+      const result = await runCli(repo, [...proposeArgs, "--dry-run", "--json"]);
+      expect(result.stderr).toBe("");
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.lesson.status).toBe("submitted");
+      expect(parsed.lesson.kind).toBe("lesson");
+    });
+  });
+
+  test("kb submit requires share-enabled mode", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "preview-only"]);
+      const result = await runCli(repo, ["kb", "submit", "--brain", "https://brain.example.com"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("share-enabled");
+    });
+  });
+
+  test("end-to-end: propose a lesson and submit it to a running Brain", async () => {
+    await withTempRepo(async (repo) => {
+      await withBrain(async (url) => {
+        expect((await runCli(repo, ["kb", "sharing", "set", "share-enabled"])).code).toBe(0);
+
+        const propose = await runCli(repo, proposeArgs);
+        expect(propose.stderr).toBe("");
+        expect(propose.code).toBe(0);
+        expect(propose.stdout).toContain("Queued lesson");
+
+        const submit = await runCli(repo, ["kb", "submit", "--brain", url]);
+        expect(submit.stderr).toBe("");
+        expect(submit.code).toBe(0);
+        expect(submit.stdout).toContain("Accepted 1");
+
+        // The Brain now serves the lesson over its live search endpoint.
+        const res = await fetch(`${url}/v1/search?q=agents`);
+        const body = await res.json();
+        expect(body.results.length).toBeGreaterThanOrEqual(1);
+        expect(body.results[0].status).toBe("trusted");
+      });
     });
   });
 });

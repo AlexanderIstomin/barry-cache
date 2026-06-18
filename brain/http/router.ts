@@ -43,8 +43,12 @@ export function createRouter(opts: RouterOptions): (request: Request) => Promise
       if (!q) return json({ error: "missing query parameter: q" }, 400);
       const includeReviewed = url.searchParams.get("tier") === "reviewed";
       const limitParam = url.searchParams.get("limit");
-      const limit = limitParam ? Number(limitParam) : undefined;
-      const results = await brain.search(q, { includeReviewed, limit: Number.isFinite(limit) ? limit : undefined });
+      const searchOpts: { includeReviewed: boolean; limit?: number } = { includeReviewed };
+      if (limitParam !== null) {
+        const limit = Number(limitParam);
+        if (Number.isFinite(limit)) searchOpts.limit = limit;
+      }
+      const results = await brain.search(q, searchOpts);
       return json({ query: q, results });
     }
 

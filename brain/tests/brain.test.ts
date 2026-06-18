@@ -1,19 +1,18 @@
 import { expect, test } from "bun:test";
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBrain, type IntakeItem } from "../core/brain";
 import { createSqliteStore } from "../core/store-sqlite";
 import { loadOrCreateBrainIdentity } from "../core/identity";
+import { signIntakeBatch } from "../../src/core/shared-kb-intake";
 
 function signedBatch(items: IntakeItem[]) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const pub = publicKey.export({ type: "spki", format: "pem" }).toString();
-  const body = { version: 1 as const, validator_id: "validator-test", public_key: Buffer.from(pub).toString("base64"), items };
-  const canonical = JSON.stringify(body, Object.keys(body).sort());
-  const signature = sign(null, Buffer.from(canonical), privateKey).toString("base64");
-  return { ...body, signature };
+  const priv = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  return signIntakeBatch({ version: 1, validator_id: "validator-test", public_key: Buffer.from(pub).toString("base64"), items }, priv);
 }
 
 const lesson = {

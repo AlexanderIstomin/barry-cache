@@ -6,8 +6,11 @@ import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
-import { buildSharedKbSnapshot, searchSharedKb, validateSharedKbSource } from "./core/shared-kb";
+import { buildSharedKbSnapshot, searchSharedKb, validateSharedKbSource, type SharedKbConfidence } from "./core/shared-kb";
 import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig } from "./core/shared-kb-config";
+import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
+import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
+import { buildLessonIntakeBatch, submitIntakeBatch } from "./core/shared-kb-brain-client";
 import type { AgentInstructionTarget, InitResult } from "./core/types";
 import { validateProject } from "./core/validate";
 
@@ -401,9 +404,93 @@ async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean):
     return;
   }
 
+  if (action === "propose") {
+    await handleKbProposeCommand(parsed, repo, json);
+    return;
+  }
+
+  if (action === "submit") {
+    await handleKbSubmitCommand(parsed, repo, json);
+    return;
+  }
+
   throw new CliArgumentError(action ? `Unknown KB action: ${action}` : "Missing KB action", {
     usage: commandUsage("kb"),
   });
+}
+
+const sharedKbConfidences = ["low", "medium", "high"] as const;
+
+async function handleKbProposeCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const kind = parsed.positionals[1];
+  if (kind !== "lesson") {
+    throw new CliArgumentError(kind ? `Unsupported proposal kind: ${kind}` : "Missing proposal kind", { usage: commandUsage("kb propose") });
+  }
+  const config = await readSharedKbConfig({ repo });
+  if (config.shared_kb.contribution === "local_only") {
+    throw new CliArgumentError("Shared KB proposals require preview-only or share-enabled mode. Run `barry-cache kb sharing set preview-only`.", {
+      usage: commandUsage("kb sharing set"),
+      options: { mode: [...sharedKbContributionModes] },
+    });
+  }
+  const confidence = optionalChoice(parsed, "confidence", sharedKbConfidences, "medium", commandUsage("kb propose"));
+  const lesson = buildLessonProposal(
+    {
+      title: requiredString(parsed, "title", commandUsage("kb propose")),
+      problem: requiredString(parsed, "problem", commandUsage("kb propose")),
+      applies_when: splitCsv(requiredString(parsed, "applies-when", commandUsage("kb propose"))),
+      recommendation: requiredString(parsed, "recommendation", commandUsage("kb propose")),
+      why: requiredString(parsed, "why", commandUsage("kb propose")),
+      avoid_when: splitCsv(requiredString(parsed, "avoid-when", commandUsage("kb propose"))),
+      tags: splitCsv(requiredString(parsed, "tags", commandUsage("kb propose"))),
+      confidence: confidence as SharedKbConfidence,
+    },
+    { now: new Date().toISOString() },
+  );
+
+  if (parsed.flags.get("dry-run") === true) {
+    print({ lesson }, json, `Dry run — lesson ${lesson.id} (not queued):\n${JSON.stringify(lesson, null, 2)}`);
+    return;
+  }
+  const path = await writeProposalToOutbox({ repo, lesson });
+  print({ lesson, outbox: path }, json, `Queued lesson ${lesson.id} to the local shared KB outbox.\nRun \`barry-cache kb submit\` (share-enabled) to send it to a Brain.`);
+}
+
+async function handleKbSubmitCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const config = await readSharedKbConfig({ repo });
+  if (config.shared_kb.contribution !== "share_enabled") {
+    throw new CliArgumentError("Shared KB submit requires share-enabled mode. Run `barry-cache kb sharing set share-enabled`.", {
+      usage: commandUsage("kb sharing set"),
+      options: { mode: [...sharedKbContributionModes] },
+    });
+  }
+  const brainUrl = optionalString(parsed, "brain", commandUsage("kb submit")) ?? config.shared_kb.brain?.url;
+  if (!brainUrl) {
+    throw new CliArgumentError("No Brain configured. Pass --brain <url> or set shared_kb.brain.url in .barry-cache/config.json.", { usage: commandUsage("kb submit") });
+  }
+  const lessons = await listOutboxLessons({ repo });
+  if (lessons.length === 0) {
+    print({ accepted: 0, lessons: [] }, json, "No pending shared KB proposals to submit.");
+    return;
+  }
+  const identity = await loadOrCreateValidatorIdentity({ repo, now: new Date().toISOString() });
+  const batch = buildLessonIntakeBatch({ identity, lessons });
+
+  if (parsed.flags.get("dry-run") === true) {
+    print({ brain: brainUrl, batch }, json, `Dry run — would submit ${lessons.length} lesson(s) to ${brainUrl}/v1/intake as validator ${identity.validator_id}.`);
+    return;
+  }
+  const result = await submitIntakeBatch({ url: brainUrl, batch });
+  if (!result.ok) {
+    process.exitCode = 1;
+    print(result, json, `Shared KB submit failed (${result.status}): ${result.error ?? "unknown error"}`);
+    return;
+  }
+  print({ ...result, lessons: lessons.map((l) => l.id) }, json, `Submitted ${lessons.length} lesson(s) to ${brainUrl}. Accepted ${result.accepted ?? 0}, rejected ${result.rejected?.length ?? 0}.`);
+}
+
+function splitCsv(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
 }
 
 async function handleKbSharingCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
@@ -568,10 +655,12 @@ function commandUsage(command: string): string | undefined {
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
-    kb: "barry-cache kb <validate|build|search|sharing> [--json]",
+    kb: "barry-cache kb <validate|build|search|propose|submit|sharing> [--json]",
     "kb validate": "barry-cache kb validate --source /path/to/shared-kb [--json]",
     "kb build": "barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--private-key private.pem --public-key public.pem] [--json]",
     "kb search": 'barry-cache kb search --source /path-or-url --query "..." [--include-reviewed] [--json]',
+    "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--confidence low|medium|high] [--dry-run] [--json]',
+    "kb submit": "barry-cache kb submit [--brain https://your-brain] [--dry-run] [--json]",
     "kb sharing": "barry-cache kb sharing <status|set> [--json]",
     "kb sharing set": "barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]",
     changelog: "barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--file CHANGELOG.md] [--json]",
@@ -600,6 +689,8 @@ Usage:
   barry-cache kb validate --source /path/to/shared-kb [--json]
   barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--json]
   barry-cache kb search --source /path-or-url --query "..." [--json]
+  barry-cache kb propose lesson --title "..." --problem "..." --recommendation "..." --why "..." [--dry-run] [--json]
+  barry-cache kb submit [--brain https://your-brain] [--dry-run] [--json]
   barry-cache kb sharing status [--json]
   barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]
   barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--json]

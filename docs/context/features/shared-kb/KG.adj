@@ -15,3 +15,7 @@ brain-server signs snapshots-with-pinned-key
 brain-server supports company-and-global-trust-policy
 brain-server ships as docker-sqlite-container
 barry-clients point-at private-or-global-brain
+barry-client contributes-via signed-intake-batch
+intake-batch signature-binds full-payload
+kb-propose queues lessons-to-local-outbox
+kb-submit posts outbox-to-brain-intake
