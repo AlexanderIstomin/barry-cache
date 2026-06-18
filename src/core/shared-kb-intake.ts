@@ -1,4 +1,4 @@
-import { createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
 
 export interface IntakeItem {
   type: "lesson" | "attestation";
@@ -29,6 +29,18 @@ export function stableStringify(value: unknown): string {
     .sort()
     .map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`);
   return `{${entries.join(",")}}`;
+}
+
+/** Canonical validator id derived from a public key PEM. The id is a pure
+ * function of the key, so a Brain can derive it from a verified key instead of
+ * trusting a client-claimed id. */
+export function validatorIdFromPem(publicKeyPem: string): string {
+  return `validator-sha256-${createHash("sha256").update(publicKeyPem).digest("hex")}`;
+}
+
+/** Derive the validator id from a batch's base64-encoded public key PEM. */
+export function deriveValidatorId(publicKeyBase64Pem: string): string {
+  return validatorIdFromPem(Buffer.from(publicKeyBase64Pem, "base64").toString("utf8"));
 }
 
 export function canonicalIntakePayload(body: IntakeBatchBody): string {

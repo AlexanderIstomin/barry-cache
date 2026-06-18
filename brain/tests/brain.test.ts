@@ -6,13 +6,14 @@ import { join } from "node:path";
 import { createBrain, type IntakeItem } from "../core/brain";
 import { createSqliteStore } from "../core/store-sqlite";
 import { loadOrCreateBrainIdentity } from "../core/identity";
-import { signIntakeBatch } from "../../src/core/shared-kb-intake";
+import { deriveValidatorId, signIntakeBatch } from "../../src/core/shared-kb-intake";
 
 function signedBatch(items: IntakeItem[]) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const pub = publicKey.export({ type: "spki", format: "pem" }).toString();
   const priv = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
-  return signIntakeBatch({ version: 1, validator_id: "validator-test", public_key: Buffer.from(pub).toString("base64"), items }, priv);
+  const publicKeyB64 = Buffer.from(pub).toString("base64");
+  return signIntakeBatch({ version: 1, validator_id: deriveValidatorId(publicKeyB64), public_key: publicKeyB64, items }, priv);
 }
 
 const lesson = {
@@ -73,6 +74,17 @@ test("intake rejects a lesson containing a leaked file path, keeps valid sibling
   const result = await brain.intake(signedBatch([{ type: "lesson", record: lesson }, { type: "lesson", record: leaky }]));
   expect(result.accepted).toBe(1);
   expect(result.rejected[0]?.index).toBe(1);
+  await cleanup();
+});
+
+test("intake rejects a batch whose validator_id does not match its public key (anti-impersonation)", async () => {
+  const { brain, cleanup } = await makeBrain("company");
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pub = publicKey.export({ type: "spki", format: "pem" }).toString();
+  const priv = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  // Validly signed by this key, but claims someone else's validator_id.
+  const forged = signIntakeBatch({ version: 1, validator_id: "validator-sha256-someone-else", public_key: Buffer.from(pub).toString("base64"), items: [{ type: "lesson", record: lesson }] }, priv);
+  await expect(brain.intake(forged)).rejects.toThrow(/validator_id/i);
   await cleanup();
 });
 

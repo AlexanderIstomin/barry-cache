@@ -10,7 +10,7 @@ import {
   type SharedKbSnapshotArtifacts,
   type SharedKbStatus,
 } from "../../src/core/shared-kb";
-import { verifyIntakeBatchSignature, type IntakeBatch, type IntakeItem } from "../../src/core/shared-kb-intake";
+import { deriveValidatorId, verifyIntakeBatchSignature, type IntakeBatch, type IntakeItem } from "../../src/core/shared-kb-intake";
 import type { BrainIdentity } from "./identity";
 import type { BrainStore, StoredAttestation } from "./store";
 
@@ -62,6 +62,11 @@ export function createBrain(opts: { store: BrainStore; identity: BrainIdentity; 
   return {
     async intake(batch) {
       if (!verifyIntakeBatchSignature(batch)) throw new Error("Shared KB intake batch signature did not verify");
+      // Derive the validator id from the verified key; never trust a client-claimed id.
+      const validatorId = deriveValidatorId(batch.public_key);
+      if (batch.validator_id !== validatorId) {
+        throw new Error(`Shared KB intake validator_id does not match its public key (claimed ${batch.validator_id})`);
+      }
       const rejected: IntakeResult["rejected"] = [];
       let accepted = 0;
       for (let index = 0; index < batch.items.length; index++) {
@@ -73,7 +78,7 @@ export function createBrain(opts: { store: BrainStore; identity: BrainIdentity; 
             continue;
           }
           const lesson = { ...(item.record as SharedKbLesson), status: acceptedLessonStatus };
-          await store.upsertLesson(lesson, { submitted_by: batch.validator_id, received_at: now() });
+          await store.upsertLesson(lesson, { submitted_by: validatorId, received_at: now() });
           accepted++;
         } else if (item.type === "attestation") {
           const error = validateAttestation(item.record);

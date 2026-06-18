@@ -1,5 +1,6 @@
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync } from "node:crypto";
 import { exists, readText, repoPath, writeText } from "./fs";
+import { validatorIdFromPem } from "./shared-kb-intake";
 
 export interface ValidatorIdentity {
   version: 1;
@@ -15,7 +16,7 @@ export function validatorIdentityPath(repo: string): string {
 }
 
 export function validatorIdForPublicKey(publicKeyPem: string): string {
-  return `validator-sha256-${createHash("sha256").update(publicKeyPem).digest("hex")}`;
+  return validatorIdFromPem(publicKeyPem);
 }
 
 export async function loadOrCreateValidatorIdentity(opts: { repo: string; now: string }): Promise<ValidatorIdentity> {

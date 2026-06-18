@@ -1,6 +1,6 @@
 shared-kb validates anonymized-lessons
 shared-kb builds signed-static-snapshots
-shared-kb publishes through cloudflare-r2-pages
+shared-kb publishes through signed-static-snapshots-or-brain
 shared-kb search uses generated-index
 revocations remove trusted-lessons
 git-pr-review gates published-lessons
