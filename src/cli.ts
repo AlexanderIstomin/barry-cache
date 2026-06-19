@@ -8,7 +8,7 @@ import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
 import { buildSharedKbSnapshot, searchSharedKb, sharedKbKinds, validateSharedKbSource, type SharedKbConfidence } from "./core/shared-kb";
 import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig, type SharedKbCqConfig } from "./core/shared-kb-config";
-import { cqSearch } from "./core/cq-adapter";
+import { cqContribute, cqSearch, lessonToCqProposal } from "./core/cq-adapter";
 import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
 import { buildAttestation, buildLessonIntakeBatch, submitAttestation, submitIntakeBatch } from "./core/shared-kb-brain-client";
@@ -422,6 +422,11 @@ async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean):
     return;
   }
 
+  if (action === "contribute") {
+    await handleKbContributeCommand(parsed, repo, json);
+    return;
+  }
+
   if (action === "harvest") {
     await handleKbHarvestCommand(parsed, repo, json);
     return;
@@ -605,6 +610,43 @@ async function handleKbSubmitCommand(parsed: ParsedArgs, repo: string, json: boo
     return;
   }
   print({ ...result, lessons: lessons.map((l) => l.id) }, json, `Submitted ${lessons.length} lesson(s) to ${brainUrl}. Accepted ${result.accepted ?? 0}, rejected ${result.rejected?.length ?? 0}.`);
+}
+
+async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const config = await readSharedKbConfig({ repo });
+  if (config.shared_kb.contribution !== "share_enabled") {
+    throw new CliArgumentError("cq contribute requires share-enabled mode. Run `barry-cache kb sharing set share-enabled`.", {
+      usage: commandUsage("kb sharing set"),
+      options: { mode: [...sharedKbContributionModes] },
+    });
+  }
+  const cq = config.shared_kb.cq;
+  if (!cq) {
+    throw new CliArgumentError("No cq endpoint configured. Set shared_kb.cq.url in .barry-cache/config.json.", { usage: commandUsage("kb contribute") });
+  }
+  const lessons = await listOutboxLessons({ repo });
+  if (lessons.length === 0) {
+    print({ contributed: 0, results: [] }, json, "No pending shared KB proposals to contribute.");
+    return;
+  }
+  const identity = await loadOrCreateValidatorIdentity({ repo, now: new Date().toISOString() });
+  const proposals = lessons.map((lesson) => ({ lesson, proposal: lessonToCqProposal(lesson, { createdBy: identity.validator_id }) }));
+
+  if (parsed.flags.get("dry-run") === true) {
+    print({ cq: cq.url, proposals: proposals.map((p) => p.proposal) }, json, `Dry run — would contribute ${proposals.length} lesson(s) to ${cq.url}/api/v1/knowledge.`);
+    return;
+  }
+  const apiKey = resolveCqApiKey(cq);
+  const results: Array<{ lesson: string; ok: boolean; status: number; id?: string; error?: string }> = [];
+  for (const { lesson, proposal } of proposals) {
+    const contributeOptions: Parameters<typeof cqContribute>[0] = { endpoint: cq.url, proposal };
+    if (apiKey) contributeOptions.apiKey = apiKey;
+    const res = await cqContribute(contributeOptions);
+    results.push({ lesson: lesson.id, ...res });
+  }
+  const ok = results.filter((r) => r.ok).length;
+  if (ok < results.length) process.exitCode = 1;
+  print({ contributed: ok, results }, json, `Contributed ${ok}/${results.length} lesson(s) to ${cq.url}.`);
 }
 
 function splitCsv(value: string): string[] {
@@ -801,13 +843,14 @@ function commandUsage(command: string): string | undefined {
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
-    kb: "barry-cache kb <validate|build|search|harvest|propose|submit|attest|sharing> [--json]",
+    kb: "barry-cache kb <validate|build|search|harvest|propose|submit|contribute|attest|sharing> [--json]",
     "kb validate": "barry-cache kb validate --source /path/to/shared-kb [--json]",
     "kb build": "barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--private-key private.pem --public-key public.pem] [--json]",
     "kb search": 'barry-cache kb search --source /path-or-url --query "..." [--include-reviewed] [--json]',
     "kb harvest": 'barry-cache kb harvest [--source context] [--kind success|failure --summary "..." [--expected "..." --actual "..." --files a,b]] [--json]',
     "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--kind lesson|anti_pattern|decision_pattern] [--confidence low|medium|high] [--dry-run] [--json]',
     "kb submit": "barry-cache kb submit [--brain https://your-brain] [--dry-run] [--json]",
+    "kb contribute": "barry-cache kb contribute [--dry-run] [--json]",
     "kb attest": 'barry-cache kb attest --lesson-id lesson-... [--result confirmed|contradicted|not_applicable] [--evidence-type observed_success|observed_failure|static_review] [--confidence 0.8] [--context-tags a,b] [--upstream-seen id1,id2] [--brain https://your-brain] [--dry-run] [--json]',
     "kb sharing": "barry-cache kb sharing <status|set> [--json]",
     "kb sharing set": "barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]",

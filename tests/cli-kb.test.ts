@@ -397,3 +397,38 @@ describe("kb search --source cq", () => {
     });
   });
 });
+
+describe("kb contribute", () => {
+  test("maps queued lessons to cq propose requests and POSTs them", async () => {
+    await withTempRepo(async (repo) => {
+      const received: any[] = [];
+      const server = Bun.serve({
+        port: 0,
+        fetch: async (req) => { received.push(await req.json()); return new Response(JSON.stringify({ data: { id: "ku_" + "a".repeat(32) } }), { status: 201 }); },
+      });
+      try {
+        await mkdir(join(repo, ".barry-cache"), { recursive: true });
+        await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({
+          shared_kb: { contribution: "share_enabled", cq: { url: `http://127.0.0.1:${server.port}` } },
+        }));
+        expect((await runCli(repo, proposeArgs)).code).toBe(0);
+        const result = await runCli(repo, ["kb", "contribute", "--json"]);
+        expect(result.code).toBe(0);
+        expect(JSON.parse(result.stdout).contributed).toBe(1);
+        expect(received[0].insight.summary).toBe("Treat handoffs as claims until validated");
+        expect(received[0].domains).toEqual(["agents", "validation"]);
+        expect(received[0].insight.detail).toContain("Source: Barry Cache lesson");
+      } finally { server.stop(true); }
+    });
+  });
+
+  test("requires share-enabled mode", async () => {
+    await withTempRepo(async (repo) => {
+      await mkdir(join(repo, ".barry-cache"), { recursive: true });
+      await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({ shared_kb: { contribution: "preview_only", cq: { url: "https://cq.example.com" } } }));
+      const result = await runCli(repo, ["kb", "contribute"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("share-enabled");
+    });
+  });
+});
