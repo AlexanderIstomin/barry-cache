@@ -21,6 +21,15 @@
 - barry-cache kb propose supports the lesson, anti_pattern, and decision_pattern kinds via --kind so harvested decisions and failures keep their taxonomy
 
 
+## 2026-06-16
+
+### Context Authoring
+- barry-cache validate checks duplicate feature fact IDs, fact enum and timestamp fields, malformed IDMAP and KG rows, and unresolved bare source IDs
+- barry-cache feature new scaffolds README.md, IDMAP.md, KG.adj, and FACTS.jsonl for a new feature pack with dry-run support and overwrite refusal
+- barry-cache fact draft prints or appends schema-checked JSONL fact rows with explicit --write, generated collision-resistant IDs from --prefix, duplicate-ID refusal, and source-ID validation
+- Generated Barry agent instructions describe fact draft as an optional schema-checked authoring guardrail while preserving direct FACTS.jsonl edits and validation as the canonical workflow
+
+
 ## 2026-06-04
 
 ### Init Bootstrap

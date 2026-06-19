@@ -32,7 +32,8 @@ Memory policy:
 - Failure records write operational validation memory only and should challenge stale handoffs or facts instead of rewriting history.
 - Do not claim Barry canonical memory is updated unless `docs/context/` changed.
 - If a task adds durable implementation behavior, add or update source-backed facts in `docs/context/features/*/FACTS.jsonl` and run `bun run barry -- validate`.
-- There is no `fact` CLI command; update canonical facts by editing `docs/context/features/*/FACTS.jsonl` directly, then run `bun run barry -- validate`.
+- Direct `FACTS.jsonl` edits remain supported; use `bun run barry -- fact draft --route "<route>" --prefix "<PREFIX>" ...` when a schema-checked JSONL draft or explicit `--write` append is safer.
+- `fact draft` is an authoring guardrail, not broad canonical CRUD; review the resulting diff and run `bun run barry -- validate`.
 - Use ISO 8601 timestamps in fact `updated_at` values when saving new facts, so same-day feature order is preserved in review timelines.
 - Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.
 

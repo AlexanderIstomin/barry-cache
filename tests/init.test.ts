@@ -44,7 +44,8 @@ describe("initProject", () => {
       expect(agents).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
       expect(agents).toContain("Finalize writes operational memory only.");
       expect(agents).toContain("Failure records write operational validation memory only");
-      expect(agents).toContain("There is no `fact` CLI command;");
+      expect(agents).toContain('bun run barry -- fact draft --route "<route>" --prefix "<PREFIX>" ...');
+      expect(agents).toContain("`fact draft` is an authoring guardrail, not broad canonical CRUD");
       expect(agents).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
       expect(agents).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
       expect(agents).toContain("run `bun install` first");

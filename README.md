@@ -70,6 +70,8 @@ barry-cache finalize --status success --summary "Updated renderer clock context"
 | `finalize --status <s> --summary "…"` | Append an operational handoff (`success`/`partial`/`blocked`/`failed`). |
 | `failure record --summary … --expected … --actual …` | Record a validation contradiction; link it with `--challenges`. |
 | `validate` / `doctor` | Check context is structurally valid (required files, ADR frontmatter, every fact row). |
+| `feature new --slug … --title … --summary …` | Scaffold a canonical feature context pack (refuses to overwrite). |
+| `fact draft --route … [--prefix …] [--write]` | Print or append a schema-checked JSONL fact row (an authoring guardrail). |
 | `adr new --title "…" [--tags …]` / `adr list` | Manage architecture decision records in `docs/context/adrs/`. |
 | `review [--port N] [--open] [--json]` | Browser tool (or JSON export) to audit what Barry knows. |
 | `changelog [--write\|--rewrite] [--since …]` | Generate a changelog from implemented timeline facts. |
@@ -91,7 +93,7 @@ barry-cache adr new --title "Use repo-native context" --tags context,agents
   "src": ["docs/context/adrs/ADR-0001-use-repo-native-context.md"], "status": "active", "kind": "decision", "updated_at": "2026-05-19" }
 ```
 
-There is no `fact` command — edit `docs/context/features/*/FACTS.jsonl` directly, then `validate`.
+Use `fact draft` to generate or append a schema-checked fact row, or edit `docs/context/features/*/FACTS.jsonl` directly — then `validate`. `fact draft` is an authoring guardrail, not a broad CRUD interface for canonical context.
 
 ## Shared knowledge base (cq)
 

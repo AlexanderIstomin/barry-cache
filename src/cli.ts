@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
+import { createFeaturePack, draftFact } from "./core/authoring";
 import { buildChangelog, writeChangelog, type WriteChangelogResult } from "./core/changelog";
 import { finalizeProject, loadContext, recordValidationFailure, resumeProject, routeTask, searchContext, type ValidationFailureStatus } from "./core/context";
 import { importPulpcutKb } from "./core/import-pulpcut";
@@ -42,6 +43,9 @@ const importSources = ["pulpcut-kb"] as const;
 const agentTargets = ["all", "none", "codex", "cursor", "copilot", "claude", "gemini", "llms"];
 const finalizeStatuses = ["success", "partial", "blocked", "failed"] as const;
 const failureStatuses = ["open", "fixed", "wontfix"] as const;
+const factStatuses = ["active", "superseded", "deprecated", "missing", "conflict"] as const;
+const factKinds = ["implemented", "decision", "constraint", "test", "risk", "open-question"] as const;
+const factConfidences = ["low", "medium", "high"] as const;
 
 async function main(argv = process.argv.slice(2)): Promise<void> {
   const parsed = parseArgs(argv);
@@ -115,6 +119,14 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       }
       case "kb": {
         await handleKbCommand(parsed, repo, json);
+        break;
+      }
+      case "feature": {
+        await handleFeatureCommand(parsed, repo, json);
+        break;
+      }
+      case "fact": {
+        await handleFactCommand(parsed, repo, json);
         break;
       }
       case "changelog": {
@@ -336,6 +348,68 @@ async function handleAdrCommand(parsed: ParsedArgs, repo: string, json: boolean)
   throw new CliArgumentError(action ? `Unknown ADR action: ${action}` : "Missing ADR action", {
     usage: commandUsage("adr"),
   });
+}
+
+async function handleFeatureCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === "new") {
+    const result = await createFeaturePack({
+      repo,
+      slug: requiredString(parsed, "slug", commandUsage("feature new")),
+      title: requiredString(parsed, "title", commandUsage("feature new")),
+      summary: requiredString(parsed, "summary", commandUsage("feature new")),
+      dryRun: parsed.flags.get("dry-run") === true,
+    });
+    print(result, json, formatFeatureNewMessage(result));
+    return;
+  }
+
+  throw new CliArgumentError(action ? `Unknown feature action: ${action}` : "Missing feature action", {
+    usage: commandUsage("feature"),
+  });
+}
+
+function formatFeatureNewMessage(result: Awaited<ReturnType<typeof createFeaturePack>>): string {
+  const action = result.dryRun ? "Would create" : "Created";
+  return `${action} feature pack ${result.route}.`;
+}
+
+async function handleFactCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === "draft") {
+    const draftOptions: Parameters<typeof draftFact>[0] = {
+      repo,
+      route: requiredString(parsed, "route", commandUsage("fact draft")),
+      subject: requiredString(parsed, "subject", commandUsage("fact draft")),
+      predicate: requiredString(parsed, "predicate", commandUsage("fact draft")),
+      object: requiredString(parsed, "object", commandUsage("fact draft")),
+      src: optionalList(parsed, "src", commandUsage("fact draft")),
+      status: optionalChoice(parsed, "status", factStatuses, "active", commandUsage("fact draft")),
+      kind: optionalChoice(parsed, "kind", factKinds, "implemented", commandUsage("fact draft")),
+      confidence: optionalChoice(parsed, "confidence", factConfidences, "high", commandUsage("fact draft")),
+      tags: optionalList(parsed, "tags", commandUsage("fact draft")),
+      write: parsed.flags.get("write") === true,
+    };
+    const id = optionalString(parsed, "id", commandUsage("fact draft"));
+    if (id !== undefined) draftOptions.id = id;
+    const prefix = optionalString(parsed, "prefix", commandUsage("fact draft"));
+    if (prefix !== undefined) draftOptions.prefix = prefix;
+    const result = await draftFact(draftOptions);
+    if (!json && !result.written) {
+      console.log(JSON.stringify(result.fact));
+      return;
+    }
+    print(result, json, formatFactDraftMessage(result));
+    return;
+  }
+
+  throw new CliArgumentError(action ? `Unknown fact action: ${action}` : "Missing fact action", {
+    usage: commandUsage("fact"),
+  });
+}
+
+function formatFactDraftMessage(result: Awaited<ReturnType<typeof draftFact>>): string {
+  return result.written ? `Appended fact ${result.fact.id} to ${result.path}.` : JSON.stringify(result.fact);
 }
 
 async function handleFailureCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
@@ -819,6 +893,10 @@ function commandUsage(command: string): string | undefined {
     "kb contribute": "barry-cache kb contribute [--dry-run] [--json]",
     "kb sharing": "barry-cache kb sharing <status|set> [--json]",
     "kb sharing set": "barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]",
+    feature: "barry-cache feature <new> [--json]",
+    "feature new": 'barry-cache feature new --slug feature-slug --title "Feature Title" --summary "Route summary." [--dry-run] [--json]',
+    fact: "barry-cache fact <draft> [--json]",
+    "fact draft": 'barry-cache fact draft --route feature-slug (--id FACT001|--prefix FACT) --subject "..." --predicate "..." --object "..." --src SRC1,SRC2 [--write] [--json]',
     changelog: "barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--file CHANGELOG.md] [--json]",
     import: "barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]",
     review: "barry-cache review [--port 8787] [--open] [--json]",
@@ -849,6 +927,8 @@ Usage:
   barry-cache kb contribute [--dry-run] [--json]
   barry-cache kb sharing status [--json]
   barry-cache kb sharing set <local-only|preview-only|share-enabled> [--json]
+  barry-cache feature new --slug feature-slug --title "Feature Title" --summary "Route summary." [--dry-run] [--json]
+  barry-cache fact draft --route feature-slug (--id FACT001|--prefix FACT) --subject "..." --predicate "..." --object "..." --src SRC1,SRC2 [--write] [--json]
   barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--json]
   barry-cache adr new --title "..." [--status active] [--tags context,agents]
   barry-cache adr list [--json]
