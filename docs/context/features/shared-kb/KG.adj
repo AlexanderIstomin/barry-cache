@@ -1,36 +1,21 @@
 shared-kb validates anonymized-lessons
-shared-kb builds signed-static-snapshots
-shared-kb publishes through signed-static-snapshots-or-brain
-shared-kb search uses generated-index
-revocations remove trusted-lessons
-git-pr-review gates published-lessons
+shared-kb redacts paths-emails-secrets
 shared-kb contribution defaults-local-only
 shared-kb contribution configured-in-local-cache
 kb-sharing-cli manages contribution-mode
-remote-shared-kb-search requires share-enabled-mode
-brain-server hosts vendor-neutral-contract
-brain-server reuses shared-kb-core
-brain-server stores lessons-in-sqlite
-brain-server signs snapshots-with-pinned-key
-brain-server supports company-and-global-trust-policy
-brain-server ships as docker-sqlite-container
-barry-clients point-at private-or-global-brain
-barry-client contributes-via signed-intake-batch
-intake-batch signature-binds full-payload
 kb-propose queues lessons-to-local-outbox
-kb-submit posts outbox-to-brain-intake
+kb-propose gated-on preview-or-share-enabled
+kb-propose supports lesson-anti-pattern-decision-pattern-kinds
 kb-harvest drafts candidate-from-latest-run
 kb-harvest emits sanitization-checklist
 harvest gate skips trivial-runs
 finalize nudges harvest-when-sharing-enabled
-kb-attest reports outcome-on-use
-attestations bound-to signing-key
-reputation scores from-outcome-grounded-attestations
-reputation discounts copied-evidence
-maturation promotes reviewed-to-trusted
-maturation demotes on-credible-contradiction
-global-policy self-validates via-attestation-reputation-maturation
-company-policy keeps immediate-trust
 kb-harvest-context bootstrap-harvests decisions-adrs-failures
 context-harvest excludes implemented-facts-and-src-paths
-kb-propose supports lesson-anti-pattern-decision-pattern-kinds
+cq-adapter maps barry-lessons-to-cq-knowledge-units
+cq-adapter pinned-to cq-schema-version
+kb-search-cq consumes cq-knowledge-via-rest
+kb-contribute posts provenance-annotated-lessons-to-cq
+kb-contribute gated-on share-enabled
+cq-path carries-no signature-or-rich-attestation
+signing retained-for local-outbox-integrity
