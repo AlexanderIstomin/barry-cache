@@ -15,3 +15,7 @@
 - `PKG`: package.json
 - `AGENT`: AGENTS.md
 - `AGENTS_MD_CANONICAL_ADR`: docs/context/adrs/ADR-0012-make-agents-md-the-canonical-agent-instruction-file-with-thin-stubs.md
+- `VALIDATE`: src/core/validate.ts
+- `VALIDATE_TEST`: tests/validate.test.ts
+- `CLI_VALIDATE_TEST`: tests/cli-validate.test.ts
+- `DRIFT_ADR`: docs/context/adrs/ADR-0013-detect-context-drift-in-validate-and-gate-ci-with-strict.md

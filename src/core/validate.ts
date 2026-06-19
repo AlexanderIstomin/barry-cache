@@ -10,7 +10,7 @@ const requiredFiles = [
   "docs/context/schema/fact.schema.json",
 ];
 
-export async function validateProject({ repo }: { repo: string }): Promise<ValidationResult> {
+export async function validateProject({ repo, now = new Date(), staleAfterDays = 180 }: { repo: string; now?: Date; staleAfterDays?: number }): Promise<ValidationResult> {
   const errors: CommandIssue[] = [];
   const warnings: CommandIssue[] = [];
   const adrCatalog = await readAdrCatalog(repo);
@@ -30,29 +30,68 @@ export async function validateProject({ repo }: { repo: string }): Promise<Valid
       warnings.push({ file: rel(repo, factsPath), message: "feature pack has no FACTS.jsonl" });
       continue;
     }
+    const idmap = await readIdmapTokens(join(featureRoot, slug, "IDMAP.md"));
     const rows = (await readTextIfExists(factsPath)).split(/\r?\n/);
-    rows.forEach((row, index) => {
-      if (row.trim().length === 0) return;
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index] ?? "";
+      if (row.trim().length === 0) continue;
       const line = index + 1;
+      let value: unknown;
       try {
-        const value = JSON.parse(row) as unknown;
-        const message = validateFact(value);
-        if (message) errors.push({ file: rel(repo, factsPath), line, message });
-        if (!message) {
-          const fact = value as FactRecord;
-          for (const source of fact.src) {
-            if (looksLikeAdrSource(source) && !adrCatalog.adrs.some((adr) => adrMatchesSource(adr, source))) {
-              warnings.push({ file: rel(repo, factsPath), line, message: `fact references missing ADR source: ${source}` });
-            }
-          }
-        }
+        value = JSON.parse(row) as unknown;
       } catch {
         errors.push({ file: rel(repo, factsPath), line, message: "invalid JSON" });
+        continue;
       }
-    });
+      const message = validateFact(value);
+      if (message) {
+        errors.push({ file: rel(repo, factsPath), line, message });
+        continue;
+      }
+      const fact = value as FactRecord;
+      for (const source of fact.src) {
+        if (looksLikeAdrSource(source)) {
+          if (!adrCatalog.adrs.some((adr) => adrMatchesSource(adr, source))) {
+            warnings.push({ file: rel(repo, factsPath), line, message: `fact references missing ADR source: ${source}` });
+          }
+          continue;
+        }
+        // Drift / provenance-rot: resolve IDMAP tokens (or treat path-like sources as paths)
+        // and warn when the referenced file no longer exists.
+        const resolved = idmap.get(source) ?? (source.includes("/") ? source : undefined);
+        if (resolved && !(await exists(repoPath(repo, resolved)))) {
+          const label = idmap.has(source) ? `${resolved} (${source})` : resolved;
+          warnings.push({ file: rel(repo, factsPath), line, message: `fact references missing source file: ${label}` });
+        }
+      }
+      // Drift / staleness: aged open questions and risks need a human to revisit.
+      if (fact.kind === "open-question" || fact.kind === "risk") {
+        const ageDays = factAgeDays(fact.updated_at, now);
+        if (ageDays !== null && ageDays > staleAfterDays) {
+          warnings.push({ file: rel(repo, factsPath), line, message: `stale ${fact.kind} not updated in ${Math.floor(ageDays)} days: ${fact.id}` });
+        }
+      }
+    }
   }
 
   return { ok: errors.length === 0, errors, warnings };
+}
+
+async function readIdmapTokens(path: string): Promise<Map<string, string>> {
+  const tokens = new Map<string, string>();
+  const text = await readTextIfExists(path);
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^-\s*`([^`]+)`:\s*(\S.*?)\s*$/.exec(line);
+    if (match && match[1] && match[2]) tokens.set(match[1], match[2]);
+  }
+  return tokens;
+}
+
+function factAgeDays(updatedAt: string, now: Date): number | null {
+  const updated = new Date(updatedAt);
+  const ms = updated.getTime();
+  if (Number.isNaN(ms)) return null;
+  return (now.getTime() - ms) / 86_400_000;
 }
 
 export function validateFact(value: unknown): string | null {

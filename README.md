@@ -76,7 +76,7 @@ barry-cache finalize --status success --summary "Updated renderer clock context"
 | `import --source pulpcut-kb --from <path>` | Import an old PulpCut KB (`--dry-run --json` first). |
 | `kb <sharing\|search\|propose\|harvest\|contribute>` | Shared knowledge base / cq interop — see below. |
 
-Add `--json` to most commands for machine-readable output.
+Add `--json` to most commands for machine-readable output. In CI, run `barry-cache validate --strict` to also fail on context drift — facts whose `src` points at a missing file, or stale `open-question`/`risk` facts.
 
 ### Decisions and facts
 

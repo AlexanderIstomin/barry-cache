@@ -63,9 +63,11 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       }
       case "validate": {
+        const strict = parsed.flags.get("strict") === true;
         const result = await validateProject({ repo });
-        print(result, json, result.ok ? "Barry Cache context is valid." : `Barry Cache found ${result.errors.length} error(s).`);
-        if (!result.ok) process.exitCode = 1;
+        const headline = result.ok ? "Barry Cache context is valid." : `Barry Cache found ${result.errors.length} error(s).`;
+        print(result, json, formatValidateReport(headline, result, strict));
+        if (!result.ok || (strict && result.warnings.length > 0)) process.exitCode = 1;
         break;
       }
       case "routes":
@@ -176,9 +178,11 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       }
       case "doctor": {
+        const strict = parsed.flags.get("strict") === true;
         const result = await validateProject({ repo });
-        print(result, json, result.ok ? "Barry Cache setup looks healthy." : "Barry Cache setup needs attention.");
-        if (!result.ok) process.exitCode = 1;
+        const headline = result.ok ? "Barry Cache setup looks healthy." : "Barry Cache setup needs attention.";
+        print(result, json, formatValidateReport(headline, result, strict));
+        if (!result.ok || (strict && result.warnings.length > 0)) process.exitCode = 1;
         break;
       }
       case "generate-adapters":
@@ -594,6 +598,24 @@ function resolveCqApiKey(cq: SharedKbCqConfig): string | undefined {
   return name ? process.env[name] : undefined;
 }
 
+function formatValidateReport(headline: string, result: Awaited<ReturnType<typeof validateProject>>, strict: boolean): string {
+  const lines = [headline];
+  if (result.errors.length > 0) {
+    lines.push("", "Errors:");
+    for (const issue of result.errors) lines.push(`  ${formatIssue(issue)}`);
+  }
+  if (result.warnings.length > 0) {
+    lines.push("", `${result.warnings.length} warning(s)${strict ? " (failing: --strict)" : ""}:`);
+    for (const issue of result.warnings) lines.push(`  ${formatIssue(issue)}`);
+    if (!strict && result.ok) lines.push("", "Run `validate --strict` to treat warnings as failures (e.g. in CI).");
+  }
+  return lines.join("\n");
+}
+
+function formatIssue(issue: { file: string; line?: number; message: string }): string {
+  return `${issue.file}${issue.line ? `:${issue.line}` : ""} — ${issue.message}`;
+}
+
 function formatAdrList(adrs: Awaited<ReturnType<typeof listAdrs>>): string {
   if (adrs.length === 0) return "No ADRs found.";
   return adrs.map((adr) => `${adr.id}  ${adr.status}  ${adr.title} (${adr.path})`).join("\n");
@@ -732,7 +754,7 @@ function usageText(message?: string): string {
 
 Usage:
   barry-cache init [--yes] [--dry-run] [--agents all|none|codex,cursor,copilot,claude,gemini,llms]
-  barry-cache validate [--json]
+  barry-cache validate [--strict] [--json]
   barry-cache route --task "..." [--json]
   barry-cache search --query "..." [--json]
   barry-cache load --route "..." [--json]
