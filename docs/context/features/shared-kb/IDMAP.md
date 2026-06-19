@@ -1,0 +1,23 @@
+# ID Map
+
+- `SHARED_KB_CORE`: src/core/shared-kb.ts
+- `SHARED_KB_CONFIG`: src/core/shared-kb-config.ts
+- `SHARED_KB_HARVEST`: src/core/shared-kb-harvest.ts
+- `SHARED_KB_PROPOSAL`: src/core/shared-kb-proposal.ts
+- `CQ_ADAPTER`: src/core/cq-adapter.ts
+- `CLI`: src/cli.ts
+- `SHARED_KB_TEST`: tests/shared-kb.test.ts
+- `SHARED_KB_CONFIG_TEST`: tests/shared-kb-config.test.ts
+- `SHARED_KB_HARVEST_TEST`: tests/shared-kb-harvest.test.ts
+- `SHARED_KB_PROPOSAL_TEST`: tests/shared-kb-proposal.test.ts
+- `CQ_ADAPTER_TEST`: tests/cq-adapter.test.ts
+- `CLI_KB_TEST`: tests/cli-kb.test.ts
+- `CLI_HELP_TEST`: tests/cli-help.test.ts
+- `CLI_FINALIZE_TEST`: tests/cli-finalize.test.ts
+- `SHARED_KB_ADR`: docs/context/adrs/ADR-0007-store-shared-solutions-kb-as-signed-static-packs.md
+- `SHARED_KB_OPT_IN_ADR`: docs/context/adrs/ADR-0008-require-explicit-opt-in-for-shared-kb-contribution.md
+- `CQ_INTEROP_ADR`: docs/context/adrs/ADR-0011-interoperate-with-cq-and-retire-the-standalone-global-hive-mind.md
+- `CQ_RESIDUE_ADR`: docs/context/adrs/ADR-0014-remove-unused-hive-mind-signing-residue-and-simplify-validator-identity.md
+- `SHARED_KB_IDENTITY`: src/core/shared-kb-identity.ts
+- `CQ_PIVOT_ROADMAP`: docs/superpowers/plans/2026-06-19-cq-interop-pivot.md
+- `README`: README.md

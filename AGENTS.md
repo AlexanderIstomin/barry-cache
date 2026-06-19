@@ -50,6 +50,12 @@ Memory policy:
 - Use ISO 8601 timestamps in fact `updated_at` values when saving new facts, so same-day feature order is preserved in review timelines.
 - Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.
 
+Shared KB (cq) — opt-in; act on this only when `bun run barry -- kb sharing status` is not local-only (the user connects with `bun run barry -- kb cq login`):
+
+- Before non-trivial work, check the shared commons: `bun run barry -- kb search --source cq --query "<problem>"`.
+- After a confirmed fix, give back: `bun run barry -- kb harvest` drafts a sanitized lesson; review it, then `bun run barry -- kb propose lesson ...` and `bun run barry -- kb contribute`.
+- Do not enable sharing or contribute on your own — that is the user's explicit choice. If sharing is local-only, skip cq entirely.
+
 Decision records:
 
 - Create an ADR when a task introduces or changes durable architecture, repo policy, storage layout, agent protocol, or cross-module behavior.

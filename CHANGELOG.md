@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-06-19
+
+### Init Bootstrap
+- barry-cache validate reports context drift as non-failing warnings: provenance rot (a fact src resolved via IDMAP token or path points to a missing file) and stale open-question/risk facts older than staleAfterDays (default 180), with validate --strict (and doctor --strict) turning warnings into a non-zero exit for CI; validateProject takes injectable now and staleAfterDays
+
+### Shared KB
+- cq endpoint descriptor is stored in .barry-cache/config.json as shared_kb.cq with url, optional api_key_ref (env:NAME), and optional domains, and is preserved when the contribution mode is rewritten
+- barry-cache kb contribute posts each queued outbox lesson to cq POST /api/v1/knowledge as a propose request (domains<-tags, insight summary/detail/action, provenance prose appended to detail, created_by=validator id, context.pattern from applies/avoid_when), gated on share-enabled, with --dry-run; cq propose carries no signature or evidence so signing stays local
+- barry-cache kb cq login stores the cq API key in a git-ignored owner-only .barry-cache/cq-credentials.json (separate from config.json), records the cq endpoint (default https://api.cq.exchange — the hosted REST API; cq.exchange itself is the web UI — with --url to override), and enables share-enabled; the key is read from --api-key, CQ_API_KEY, or stdin; resolution prefers an api_key_ref env over the stored key; kb cq logout removes the key and sets local-only
+- barry-cache kb search --source cq queries a configured cq endpoint via GET /api/v1/knowledge through a versioned adapter (CQ_SCHEMA_VERSION), sending a required domains filter (--domains or shared_kb.cq.domains) as the cq query parameter, then mapping cq knowledge_units to Barry search items and scoring them by the free-text query locally; rejects a query with no searchable term (no word of 3+ characters) so it never silently returns the whole domain; gated on share-enabled mode and erroring clearly on a non-JSON response
+- barry-cache kb contribute removes each lesson from the outbox after a successful cq POST so re-running does not re-submit and create duplicate units; failed sends stay queued for retry
+- Removed hive-mind signing residue (ADR-0014): the validator identity is now a stable random per-repo id used only as cq created_by (no Ed25519 keypair or private key on disk), the canonical lesson schema is trimmed to produced/consumed values (status submitted|reviewed|trusted|challenged, evidence.source_type community_report, no supersedes), and the no-op generate-adapters and lint-wiki commands are removed
+
+
+## 2026-06-18
+
+### Shared KB
+- barry-cache kb propose gates lesson proposal creation on preview-only or share-enabled mode, queuing the validated lesson to the repo-local outbox for later contribution
+- Shared KB harvest is gated on preview-only or share-enabled mode, and a successful finalize nudges the agent to run kb harvest only when sharing is enabled
+- barry-cache kb harvest --source context bootstrap-harvests the existing context backlog (active decision facts, active ADRs, recorded validation failures) into sanitization candidates, excluding implemented/test facts, superseded records, and src file pointers, then flows through the agent-in-the-loop propose path
+- barry-cache kb propose supports the lesson, anti_pattern, and decision_pattern kinds via --kind so harvested decisions and failures keep their taxonomy
+
+
 ## 2026-06-16
 
 ### Context Authoring
@@ -7,6 +30,17 @@
 - barry-cache feature new scaffolds README.md, IDMAP.md, KG.adj, and FACTS.jsonl for a new feature pack with dry-run support and overwrite refusal
 - barry-cache fact draft prints or appends schema-checked JSONL fact rows with explicit --write, generated collision-resistant IDs from --prefix, duplicate-ID refusal, and source-ID validation
 - Generated Barry agent instructions describe fact draft as an optional schema-checked authoring guardrail while preserving direct FACTS.jsonl edits and validation as the canonical workflow
+
+
+## 2026-06-04
+
+### Init Bootstrap
+- barry-cache init adds to managed gitignore .barry-cache/ so repo-local Barry user config such as shared KB contribution mode is not committed
+
+### Shared KB
+- Shared KB lesson validation rejects revealing file paths, email addresses, and secret-looking tokens in lesson text, so a lesson is sanitized before it is queued to the outbox or contributed to cq
+- Shared KB contribution mode is stored in .barry-cache/config.json as repo-local user config with local_only, preview_only, or share_enabled values
+- barry-cache kb sharing manages shared KB contribution status and set commands using local-only, preview-only, and share-enabled CLI mode names
 
 
 ## 2026-05-27

@@ -11,5 +11,12 @@
 - `ADR_GUIDANCE_ADR`: docs/context/adrs/ADR-0002-include-adr-guidance-in-generated-agent-instructions.md
 - `VALIDATION_FAILURE_ADR`: docs/context/adrs/ADR-0004-record-validation-failures-as-operational-contradictions.md
 - `FACT_UPDATE_ADR`: docs/context/adrs/ADR-0006-clarify-canonical-fact-updates-in-agent-instructions.md
+- `SHARED_KB_OPT_IN_ADR`: docs/context/adrs/ADR-0008-require-explicit-opt-in-for-shared-kb-contribution.md
 - `PKG`: package.json
 - `AGENT`: AGENTS.md
+- `AGENTS_MD_CANONICAL_ADR`: docs/context/adrs/ADR-0012-make-agents-md-the-canonical-agent-instruction-file-with-thin-stubs.md
+- `VALIDATE`: src/core/validate.ts
+- `VALIDATE_TEST`: tests/validate.test.ts
+- `CLI_VALIDATE_TEST`: tests/cli-validate.test.ts
+- `DRIFT_ADR`: docs/context/adrs/ADR-0013-detect-context-drift-in-validate-and-gate-ci-with-strict.md
+- `CQ_INTEROP_ADR`: docs/context/adrs/ADR-0011-interoperate-with-cq-and-retire-the-standalone-global-hive-mind.md

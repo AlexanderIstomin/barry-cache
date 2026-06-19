@@ -73,7 +73,27 @@ Memory policy:
 - Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts, so same-day feature order is preserved in review timelines.
 - Use collision-resistant fact IDs like \`REV-20260526T160512Z-a8f3\`; dense review UI may display them as \`REV-a8f3\`.
 
+Shared KB (cq) — opt-in; act on this only when \`${commandPrefix} kb sharing status\` is not local-only (the user connects with \`${commandPrefix} kb cq login\`):
+
+- Before non-trivial work, check the shared commons: \`${commandPrefix} kb search --source cq --query "<problem>"\`.
+- After a confirmed fix, give back: \`${commandPrefix} kb harvest\` drafts a sanitized lesson; review it, then \`${commandPrefix} kb propose lesson ...\` and \`${commandPrefix} kb contribute\`.
+- Do not enable sharing or contribute on your own — that is the user's explicit choice. If sharing is local-only, skip cq entirely.
+
 ${decisionRecordInstructions(commandPrefix)}
+	`;
+}
+
+export function agentStub(commandPrefix = "barry-cache"): string {
+  return `
+## Barry Cache
+
+This repo uses Barry Cache for shared, source-backed project context. The full command set and memory policy live in \`AGENTS.md\` at the repo root — read it before doing non-trivial work.
+
+Start a task with:
+
+\`\`\`bash
+${commandPrefix} resume --task "<task>"
+\`\`\`
 	`;
 }
 

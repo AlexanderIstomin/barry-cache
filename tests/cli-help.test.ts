@@ -92,4 +92,30 @@ describe("cli argument help", () => {
       expect(parsed.options.source).toEqual(["pulpcut-kb"]);
     });
   });
+
+  test("kb search without query shows command usage", async () => {
+    await withTempRepo(async (repo) => {
+      const result = await runCli(repo, ["kb", "search", "--source", "cq"]);
+
+      expect(result.stdout).toBe("");
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("Missing required --query");
+      expect(result.stderr).toContain("barry-cache kb search --source cq");
+    });
+  });
+
+  test("kb sharing rejects unsupported modes with available choices", async () => {
+    await withTempRepo(async (repo) => {
+      const result = await runCli(repo, ["kb", "sharing", "set", "red-pill"]);
+
+      expect(result.stdout).toBe("");
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("Unsupported shared KB contribution mode: red-pill");
+      expect(result.stderr).toContain("barry-cache kb sharing set <local-only|preview-only|share-enabled>");
+      expect(result.stderr).toContain("Available mode values:");
+      expect(result.stderr).toContain("local-only");
+      expect(result.stderr).toContain("preview-only");
+      expect(result.stderr).toContain("share-enabled");
+    });
+  });
 });

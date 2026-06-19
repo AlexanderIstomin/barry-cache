@@ -1,0 +1,21 @@
+shared-kb validates anonymized-lessons
+shared-kb redacts paths-emails-secrets
+shared-kb contribution defaults-local-only
+shared-kb contribution configured-in-local-cache
+kb-sharing-cli manages contribution-mode
+kb-propose queues lessons-to-local-outbox
+kb-propose gated-on preview-or-share-enabled
+kb-propose supports lesson-anti-pattern-decision-pattern-kinds
+kb-harvest drafts candidate-from-latest-run
+kb-harvest emits sanitization-checklist
+harvest gate skips trivial-runs
+finalize nudges harvest-when-sharing-enabled
+kb-harvest-context bootstrap-harvests decisions-adrs-failures
+context-harvest excludes implemented-facts-and-src-paths
+cq-adapter maps barry-lessons-to-cq-knowledge-units
+cq-adapter pinned-to cq-schema-version
+kb-search-cq consumes cq-knowledge-via-rest
+kb-contribute posts provenance-annotated-lessons-to-cq
+kb-contribute gated-on share-enabled
+cq-path carries-no signature-or-rich-attestation
+validator-identity used-as cq-created-by-attribution

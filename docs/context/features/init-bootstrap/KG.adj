@@ -5,3 +5,4 @@ agent-instructions include adr-guidance
 agent-instructions include fact-update-guidance
 self-hosting uses source-cli
 package-json provides barry-scripts
+initProject ignores local-barry-config
