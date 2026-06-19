@@ -183,9 +183,19 @@ describe("kb search --source cq", () => {
     await withTempRepo(async (repo) => {
       await mkdir(join(repo, ".barry-cache"), { recursive: true });
       await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({ shared_kb: { contribution: "share_enabled", cq: { url: "https://api.cq.exchange" } } }));
-      const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "x"]);
+      const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "longenoughquery"]);
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("requires at least one domain");
+    });
+  });
+
+  test("rejects a query with no searchable terms (no word of 3+ characters)", async () => {
+    await withTempRepo(async (repo) => {
+      await mkdir(join(repo, ".barry-cache"), { recursive: true });
+      await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({ shared_kb: { contribution: "share_enabled", cq: { url: "https://api.cq.exchange", domains: ["ci"] } } }));
+      const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "a b"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("no searchable terms");
     });
   });
 

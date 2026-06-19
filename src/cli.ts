@@ -6,7 +6,7 @@ import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
-import { sharedKbKinds, type SharedKbConfidence, type SharedKbSearchResult } from "./core/shared-kb";
+import { sharedKbKinds, tokens, type SharedKbConfidence, type SharedKbSearchResult } from "./core/shared-kb";
 import { clearCqApiKey, formatSharedKbContributionMode, readCqApiKey, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeCqApiKey, writeSharedKbContributionMode, writeSharedKbCqConfig, type SharedKbConfig, type SharedKbCqConfig } from "./core/shared-kb-config";
 import { cqContribute, cqSearch, lessonToCqProposal } from "./core/cq-adapter";
 import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
@@ -651,6 +651,9 @@ async function handleKbSearchCq(repo: string, json: boolean, query: string, cliD
   const cq = config.shared_kb.cq;
   if (!cq) {
     throw new CliArgumentError("No cq endpoint configured. Set shared_kb.cq.url in .barry-cache/config.json.", { usage: commandUsage("kb search") });
+  }
+  if (tokens(query).length === 0) {
+    throw new CliArgumentError(`Query "${query}" has no searchable terms — include a word of at least 3 characters.`, { usage: commandUsage("kb search") });
   }
   const domains = cliDomains.length > 0 ? cliDomains : (cq.domains ?? []);
   if (domains.length === 0) {
