@@ -19,3 +19,4 @@
 - `VALIDATE_TEST`: tests/validate.test.ts
 - `CLI_VALIDATE_TEST`: tests/cli-validate.test.ts
 - `DRIFT_ADR`: docs/context/adrs/ADR-0013-detect-context-drift-in-validate-and-gate-ci-with-strict.md
+- `CQ_INTEROP_ADR`: docs/context/adrs/ADR-0011-interoperate-with-cq-and-retire-the-standalone-global-hive-mind.md

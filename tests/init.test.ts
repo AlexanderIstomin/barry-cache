@@ -49,6 +49,9 @@ describe("initProject", () => {
       expect(agents).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
       expect(agents).toContain("run `bun install` first");
       expect(agents).not.toContain("barry-cache resume --task");
+      expect(agents).toContain("Shared KB (cq) — opt-in");
+      expect(agents).toContain("bun run barry -- kb search --source cq --query");
+      expect(agents).toContain("Do not enable sharing or contribute on your own");
       expect(agents).toContain("Decision records:");
       expect(agents).toContain('bun run barry -- adr new --title "<decision>" --tags "<tags>"');
       expect(agents).toContain('Add or update a `kind: "decision"` fact');
@@ -63,6 +66,7 @@ describe("initProject", () => {
       // The full memory policy now lives only in AGENTS.md, not in every stub.
       expect(cursor).not.toContain("There is no `fact` CLI command;");
       expect(cursor).not.toContain("Do not create ADRs for routine bug fixes");
+      expect(cursor).not.toContain("Shared KB (cq)");
 
       const claude = await readFile(join(repo, "CLAUDE.md"), "utf8");
       expect(claude).toContain("`AGENTS.md`");
