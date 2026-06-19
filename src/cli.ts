@@ -7,7 +7,8 @@ import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
 import { buildSharedKbSnapshot, searchSharedKb, sharedKbKinds, validateSharedKbSource, type SharedKbConfidence } from "./core/shared-kb";
-import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig } from "./core/shared-kb-config";
+import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig, type SharedKbCqConfig } from "./core/shared-kb-config";
+import { cqSearch } from "./core/cq-adapter";
 import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
 import { buildAttestation, buildLessonIntakeBatch, submitAttestation, submitIntakeBatch } from "./core/shared-kb-brain-client";
@@ -397,6 +398,10 @@ async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean):
   if (action === "search") {
     const source = requiredString(parsed, "source", commandUsage("kb search"));
     const query = requiredString(parsed, "query", commandUsage("kb search"));
+    if (source === "cq") {
+      await handleKbSearchCq(repo, json, query);
+      return;
+    }
     await assertRemoteSharedKbSearchAllowed(repo, source);
     const result = await searchSharedKb({
       source,
@@ -637,6 +642,34 @@ async function handleKbSharingCommand(parsed: ParsedArgs, repo: string, json: bo
   throw new CliArgumentError(action ? `Unknown KB sharing action: ${action}` : "Missing KB sharing action", {
     usage: commandUsage("kb sharing"),
   });
+}
+
+async function handleKbSearchCq(repo: string, json: boolean, query: string): Promise<void> {
+  const config = await readSharedKbConfig({ repo });
+  if (config.shared_kb.contribution !== "share_enabled") {
+    throw new CliArgumentError("cq search requires share-enabled mode. Run `barry-cache kb sharing set share-enabled`.", {
+      usage: commandUsage("kb sharing set"),
+      options: { mode: [...sharedKbContributionModes] },
+    });
+  }
+  const cq = config.shared_kb.cq;
+  if (!cq) {
+    throw new CliArgumentError("No cq endpoint configured. Set shared_kb.cq.url in .barry-cache/config.json.", { usage: commandUsage("kb search") });
+  }
+  const searchOptions: Parameters<typeof cqSearch>[0] = { endpoint: cq.url, query };
+  if (cq.domains) searchOptions.domains = cq.domains;
+  const apiKey = resolveCqApiKey(cq);
+  if (apiKey) searchOptions.apiKey = apiKey;
+  const result = await cqSearch(searchOptions);
+  print(result, json, formatKbSearchResults(result));
+}
+
+function resolveCqApiKey(cq: SharedKbCqConfig): string | undefined {
+  if (!cq.api_key_ref) return undefined;
+  const match = /^env:(.+)$/.exec(cq.api_key_ref);
+  if (!match) return undefined;
+  const name = match[1];
+  return name ? process.env[name] : undefined;
 }
 
 async function assertRemoteSharedKbSearchAllowed(repo: string, source: string): Promise<void> {

@@ -361,3 +361,39 @@ describe("kb cli", () => {
     });
   });
 });
+
+describe("kb search --source cq", () => {
+  test("returns mapped cq results from a configured cq endpoint", async () => {
+    await withTempRepo(async (repo) => {
+      const server = Bun.serve({
+        port: 0,
+        fetch: () => new Response(JSON.stringify({
+          data: [{ id: "ku_x", confidence: 0.8, insight: { summary: "flaky ci", detail: "tests flake", action: "retry" } }],
+        }), { status: 200 }),
+      });
+      try {
+        await mkdir(join(repo, ".barry-cache"), { recursive: true });
+        await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({
+          shared_kb: { contribution: "share_enabled", cq: { url: `http://127.0.0.1:${server.port}` } },
+        }));
+        const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "flaky", "--json"]);
+        expect(result.code).toBe(0);
+        expect(JSON.parse(result.stdout).results[0].id).toBe("ku_x");
+      } finally {
+        server.stop(true);
+      }
+    });
+  });
+
+  test("requires share-enabled mode", async () => {
+    await withTempRepo(async (repo) => {
+      await mkdir(join(repo, ".barry-cache"), { recursive: true });
+      await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({
+        shared_kb: { contribution: "preview_only", cq: { url: "https://cq.example.com" } },
+      }));
+      const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "x"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("share-enabled");
+    });
+  });
+});

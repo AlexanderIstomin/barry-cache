@@ -96,7 +96,7 @@ describe("cqSearch", () => {
   });
 
   test("throws on a non-OK response", async () => {
-    const failing = (async () => new Response("nope", { status: 503 })) as typeof fetch;
+    const failing = (async () => new Response("nope", { status: 503 })) as unknown as typeof fetch;
     await expect(
       cqSearch({ endpoint: "https://cq.example.com", query: "x", fetchImpl: failing }),
     ).rejects.toThrow("cq search failed: 503");
