@@ -1,5 +1,10 @@
 # Brain v1 — Self-Hostable Server Implementation Plan
 
+> **SUPERSEDED & ABANDONED (2026-06-19).** The Brain server was built and then retired by
+> [ADR-0011](../../context/adrs/ADR-0011-interoperate-with-cq-and-retire-the-standalone-global-hive-mind.md):
+> Barry now interoperates with Mozilla's cq commons instead of running its own server, and the
+> `brain/` tree has been deleted. Kept only as historical record — do not implement.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship a self-hostable "Brain" server for the distributed shared KB that anyone can stand up with one Docker command (SQLite-backed), exposing a vendor-neutral HTTP contract that Barry instances point at.
