@@ -104,6 +104,17 @@ describe("cqSearch", () => {
     expect(captured.auth).toBe("Bearer secret");
   });
 
+  test("orders tied scores by confidence band, high before low", async () => {
+    const body = {
+      data: [
+        { id: "ku_low", domains: ["ci"], evidence: { confidence: 0.1 }, insight: { summary: "flaky tests", detail: "ci", action: "pin" } },
+        { id: "ku_high", domains: ["ci"], evidence: { confidence: 0.9 }, insight: { summary: "flaky tests", detail: "ci", action: "pin" } },
+      ],
+    };
+    const result = await cqSearch({ endpoint: "https://cq.example.com", query: "flaky tests", fetchImpl: fakeFetch(body, {}) });
+    expect(result.results.map((r) => r.id)).toEqual(["ku_high", "ku_low"]);
+  });
+
   test("passes domains as a query parameter", async () => {
     const captured: { url?: string; auth?: string | null } = {};
     await cqSearch({

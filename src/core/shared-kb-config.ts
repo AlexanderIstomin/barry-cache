@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { exists, readText, repoPath, writeText } from "./fs";
 
@@ -73,6 +73,10 @@ export async function writeCqApiKey(options: { repo: string; apiKey: string }): 
   const path = cqCredentialsPath(options.repo);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify({ api_key: options.apiKey }, null, 2)}\n`, { mode: 0o600 });
+  // `mode` only applies when the file is created; tighten an already-existing (possibly
+  // too-open) credentials file too. Best-effort: chmod is a harmless no-op on platforms
+  // that do not support POSIX permissions.
+  await chmod(path, 0o600).catch(() => {});
   return path;
 }
 

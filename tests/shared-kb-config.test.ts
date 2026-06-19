@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { clearCqApiKey, cqCredentialsPath, readCqApiKey, readSharedKbConfig, sharedKbContributionModes, sharedKbConfigPath, toSharedKbContributionMode, writeCqApiKey, writeSharedKbContributionMode } from "../src/core/shared-kb-config";
 import { withTempRepo } from "./helpers";
 
@@ -80,6 +80,17 @@ describe("shared KB contribution config", () => {
       expect(await clearCqApiKey({ repo })).toBe(true);
       expect(await readCqApiKey({ repo })).toBeUndefined();
       expect(await clearCqApiKey({ repo })).toBe(false);
+    });
+  });
+
+  test("tightens an already-existing, too-open credentials file to 0600", async () => {
+    await withTempRepo(async (repo) => {
+      const path = cqCredentialsPath(repo);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, "{}\n");
+      await chmod(path, 0o644); // simulate a pre-existing world-readable file
+      await writeCqApiKey({ repo, apiKey: "sk-test-123" });
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
     });
   });
 });

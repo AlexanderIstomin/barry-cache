@@ -70,6 +70,8 @@ function cqConfidenceToBand(confidence?: number): SharedKbConfidence {
   return "low";
 }
 
+const confidenceRank: Record<SharedKbConfidence, number> = { low: 0, medium: 1, high: 2 };
+
 function cqUnitStatus(unit: CqKnowledgeUnit): SharedKbStatus {
   if (Array.isArray(unit.flags) && unit.flags.length > 0) return "challenged";
   const confidence = unit.evidence?.confidence;
@@ -143,7 +145,7 @@ export async function cqSearch(options: {
     .map((unit) => cqUnitToSearchItem(unit))
     .map((item) => ({ ...item, score: scoreText(item.text, queryTokens) }))
     .filter((item) => item.score === queryTokens.length)
-    .sort((a, b) => b.score - a.score || b.confidence.localeCompare(a.confidence) || a.id.localeCompare(b.id));
+    .sort((a, b) => b.score - a.score || confidenceRank[b.confidence] - confidenceRank[a.confidence] || a.id.localeCompare(b.id));
   return { query: options.query, results };
 }
 
