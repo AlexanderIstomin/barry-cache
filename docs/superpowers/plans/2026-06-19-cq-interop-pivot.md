@@ -72,7 +72,7 @@ prose-in-`detail` + `created_by`.
 ## Disposition (what each existing module becomes)
 
 Derived from the full inventory. KEEP = stays in shipped Barry; ADAPT = retargeted to cq;
-RESEARCH = moves to `barry-hive`; DROP = deleted.
+DROP = deleted outright (no research repo — owner dropped the hive-mind entirely 2026-06-19).
 
 | Module / asset | Verdict | Phase |
 |---|---|---|
@@ -84,9 +84,9 @@ RESEARCH = moves to `barry-hive`; DROP = deleted.
 | `src/core/shared-kb-attestation.ts` (signed outcomes) | **ADAPT** → cq `confirm`/`flag` | 2 |
 | `src/core/shared-kb-config.ts` (brain descriptor) | **ADAPT** → cq endpoint descriptor | 1 |
 | `src/core/shared-kb-brain-client.ts` (Brain HTTP client) | **ADAPT** → cq client (or replace) | 1–2 |
-| `src/core/shared-kb-reputation.ts` (reputation scoring) | **RESEARCH** | 4 |
+| `src/core/shared-kb-reputation.ts` (reputation scoring) | **DROP** | 3 |
 | `brain/**` (server, store, router, runtime, cli, conformance, Dockerfile, tests) | **DROP** (global); company tier deferred | 3 |
-| `brain/core/maturation.ts` (staged maturation) | **RESEARCH** | 4 |
+| `brain/core/maturation.ts` (staged maturation) | **DROP** | 3 |
 | `kb build` / `kb submit`→own-brain / `kb attest`→own-brain (CLI) | **ADAPT/DROP** | 2–3 |
 | `docs/brain-self-host.md`, `docs/shared-kb-distribution.md` | **DROP/REWRITE** for cq | 3 |
 | New: `src/core/cq-adapter.ts` (map + transport) | **CREATE** | 1 |
@@ -162,18 +162,12 @@ referencing `CQ_INTEROP_ADR`; prune obsolete IDMAP tokens. Run `barry-cache vali
 clean. **Risk:** high (deletion) — gated by Phases 1–2 shipping the replacement. **Depends on:**
 Phases 1–2 + decision gate.
 
-### Phase 4 — extract `barry-hive` research repo
+### Phase 4 — ~~extract `barry-hive` research repo~~ (CANCELLED)
 
-**Goal:** preserve the trust-validation work as research/brand, out of the shipped product.
-
-**Deliverables:**
-- New repo `barry-hive`; move `shared-kb-reputation.ts`, the maturation logic, the hive-mind spec
-  + SP plans, with **history** via `git filter-repo`/`subtree split`.
-- Add the **poisoning/collusion simulator** (the falsifiable "outcome-grounded reputation vs.
-  crowd" experiment) as the headline research artifact.
-
-**Exit criteria:** `barry-hive` builds and runs the simulator standalone; shipped Barry no longer
-references reputation/maturation. **Risk:** medium (history surgery). **Depends on:** Phase 3.
+**Cancelled 2026-06-19 at owner's direction:** there is no `barry-hive` repo and no continued
+trust-validation research. `shared-kb-reputation.ts` and the maturation logic are **deleted
+outright in Phase 3** (git history is the only record). The hive-mind spec is marked superseded in
+place. Nothing remains to extract.
 
 ---
 
@@ -198,9 +192,9 @@ its own plan.
 
 ## Sequencing summary
 
-1. **Phase 1** (consume) → **Phase 2** (contribute) → **decision gate** → **Phase 3** (retire) →
-   **Phase 4** (extract research). This order ensures the cq replacement ships *before* anything is
-   deleted.
+1. **Phase 1** (consume) → **Phase 2** (contribute) → **decision gate** → **Phase 3** (retire
+   the hive-mind outright). Phase 4 is cancelled. This order ensured the cq replacement shipped
+   *before* anything was deleted.
 2. **Track A** and **Track B** run anytime in parallel; they raise core-product value
    independently and are good "between phases" work.
 3. Each phase ends with `barry-cache validate` clean and a fact/ADR update reflecting reality.

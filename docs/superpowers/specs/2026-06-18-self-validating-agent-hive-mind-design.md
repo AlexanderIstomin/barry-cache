@@ -1,8 +1,14 @@
 # Self-Validating Agent Hive-Mind — Program Design
 
+> **SUPERSEDED & ABANDONED (2026-06-19).** This program was retired by
+> [ADR-0011](../../context/adrs/ADR-0011-interoperate-with-cq-and-retire-the-standalone-global-hive-mind.md):
+> Barry now interoperates with Mozilla's cq commons instead of running its own Brain, and the
+> self-validation/reputation research was dropped entirely (no `barry-hive` repo). This document is
+> kept only as historical design rationale — none of it is implemented or planned. Do not build from it.
+
 **Date:** 2026-06-18
-**Status:** Approved design (program level); implemented per sub-project specs/plans.
-**Supersedes (on SP4 delivery):** the human-review trust gate of ADR-0007 and the access-reciprocity stance of ADR-0008. See [ADR impact](#adr-impact).
+**Status:** Superseded by ADR-0011 (abandoned).
+**Historical note:** originally proposed superseding the human-review trust gate of ADR-0007 and the access-reciprocity stance of ADR-0008.
 
 > This is a **program design**, not a single implementation plan. The system is too large
 > for one plan, so it is decomposed into sub-projects (SP0–SP4). Each sub-project gets its

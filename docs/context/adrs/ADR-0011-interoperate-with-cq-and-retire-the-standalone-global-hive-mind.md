@@ -66,10 +66,10 @@ self-validation trust work as research rather than a running production system.
    distribution (snapshot build in `shared-kb.ts`, `kb build`), and the running maturation engine
    (`brain/core/maturation.ts`) are removed from the shipped product. `kb submit`/`kb attest`
    retarget from a Barry Brain to cq (or are removed in favour of the cq contribute path).
-4. **Move the trust research out, don't delete it.** `shared-kb-reputation.ts`, the maturation
-   logic, and a new poisoning/collusion simulator move to a separate research repo (`barry-hive`)
-   with history preserved. That repo is the venue for the "outcome-grounded reputation vs. crowd"
-   work and the brand artifact; it is *not* run as a parallel production engine.
+4. **Delete the trust-validation research entirely.** `shared-kb-reputation.ts`, the maturation
+   logic, attestation, and the Brain are removed outright — **no `barry-hive` research repo**, no
+   continued work on outcome-grounded reputation. Git history is the only record. (Revised
+   2026-06-19: the originally-planned research extraction was dropped at the owner's direction.)
 5. **The hedge is the adapter, not a parallel server.** Keeping Barry's format canonical behind a
    versioned cq adapter is the insurance against cq churn or sunset — if cq changes or dies, point
    the adapter elsewhere. We do not keep a competing Brain running "just in case".
@@ -90,9 +90,9 @@ and frees the shipped product to focus on its real edge.
 
 Costs and follow-ups:
 
-- **Deleted code is real loss but redeployed value.** The hive-mind work validated the design
-  (cq independently converged) and its reusable parts (harvest, sanitize, sign, provenance) are
-  kept; the redundant parts (maturation/reputation engine, Brain) become the research artifact.
+- **Deleted code is real loss.** The hive-mind work validated the design (cq independently
+  converged) and its reusable parts (harvest, sanitize, sign, provenance) are kept; the redundant
+  parts (Brain, snapshot distribution, attestation/reputation/maturation) are deleted outright.
 - **External dependency risk.** cq is a proof-of-concept; its schema will churn and Mozilla.ai
   may sunset it. Mitigated by the versioned adapter + canonical-local-format hedge.
 - **cq contract limits (grounded against `schema/*.json`, 2026-06-19).** cq's remote REST API is

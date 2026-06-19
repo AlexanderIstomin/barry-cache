@@ -46,8 +46,7 @@ npx barry-cache init --dry-run
 
 ## Command Reference
 
-Shared/community solutions KB distribution is documented in [Shared KB Distribution](docs/shared-kb-distribution.md), and running a self-hostable Brain server in [Brain self-hosting](docs/brain-self-host.md).
-Shared KB contribution is disabled by default; inspect or change the repo-local mode with `barry-cache kb sharing status` and `barry-cache kb sharing set local-only|preview-only|share-enabled`. Remote shared KB search requires `share-enabled`; local snapshot search remains available in every mode.
+Barry interoperates with Mozilla's [cq](https://github.com/mozilla-ai/cq) shared-knowledge commons: `barry-cache kb search --source cq` reads it and `barry-cache kb contribute` posts provenance-annotated lessons to it. Shared KB contribution is disabled by default; inspect or change the repo-local mode with `barry-cache kb sharing status` and `barry-cache kb sharing set local-only|preview-only|share-enabled`. cq access requires `share-enabled`. Point Barry at a cq endpoint via `shared_kb.cq.url` in `.barry-cache/config.json`.
 
 ### `barry-cache init`
 
