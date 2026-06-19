@@ -376,7 +376,7 @@ async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean):
     if (source !== "cq") {
       throw new CliArgumentError("kb search only supports --source cq. Set shared_kb.cq.url in .barry-cache/config.json.", { usage: commandUsage("kb search") });
     }
-    await handleKbSearchCq(repo, json, query);
+    await handleKbSearchCq(repo, json, query, optionalList(parsed, "domains", commandUsage("kb search")));
     return;
   }
 
@@ -573,7 +573,7 @@ async function handleKbCqLogin(parsed: ParsedArgs, repo: string, json: boolean):
   if (!apiKey) {
     throw new CliArgumentError("Provide your cq API key with --api-key <key>, the CQ_API_KEY env var, or piped via stdin.", { usage: commandUsage("kb cq login") });
   }
-  const url = optionalString(parsed, "url", commandUsage("kb cq login")) ?? "https://cq.exchange";
+  const url = optionalString(parsed, "url", commandUsage("kb cq login")) ?? "https://api.cq.exchange";
   const domains = optionalList(parsed, "domains", commandUsage("kb cq login"));
   const current = await readSharedKbConfig({ repo });
   const existingDomains = current.shared_kb.cq?.domains;
@@ -640,7 +640,7 @@ async function handleKbSharingCommand(parsed: ParsedArgs, repo: string, json: bo
   });
 }
 
-async function handleKbSearchCq(repo: string, json: boolean, query: string): Promise<void> {
+async function handleKbSearchCq(repo: string, json: boolean, query: string, cliDomains: string[]): Promise<void> {
   const config = await readSharedKbConfig({ repo });
   if (config.shared_kb.contribution !== "share_enabled") {
     throw new CliArgumentError("cq search requires share-enabled mode. Run `barry-cache kb sharing set share-enabled`.", {
@@ -652,8 +652,11 @@ async function handleKbSearchCq(repo: string, json: boolean, query: string): Pro
   if (!cq) {
     throw new CliArgumentError("No cq endpoint configured. Set shared_kb.cq.url in .barry-cache/config.json.", { usage: commandUsage("kb search") });
   }
-  const searchOptions: Parameters<typeof cqSearch>[0] = { endpoint: cq.url, query };
-  if (cq.domains) searchOptions.domains = cq.domains;
+  const domains = cliDomains.length > 0 ? cliDomains : (cq.domains ?? []);
+  if (domains.length === 0) {
+    throw new CliArgumentError("cq search requires at least one domain. Pass --domains a,b or set shared_kb.cq.domains in .barry-cache/config.json.", { usage: commandUsage("kb search") });
+  }
+  const searchOptions: Parameters<typeof cqSearch>[0] = { endpoint: cq.url, query, domains };
   const apiKey = await resolveCqApiKey(repo, cq);
   if (apiKey) searchOptions.apiKey = apiKey;
   const result = await cqSearch(searchOptions);
@@ -806,8 +809,8 @@ function commandUsage(command: string): string | undefined {
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
     kb: "barry-cache kb <search|harvest|propose|contribute|cq|sharing> [--json]",
     "kb cq": "barry-cache kb cq <login|logout|status> [--json]",
-    "kb cq login": "barry-cache kb cq login --api-key <key> [--url https://cq.exchange] [--domains a,b] [--json]",
-    "kb search": 'barry-cache kb search --source cq --query "..." [--json]',
+    "kb cq login": "barry-cache kb cq login --api-key <key> [--url https://api.cq.exchange] [--domains a,b] [--json]",
+    "kb search": 'barry-cache kb search --source cq --query "..." --domains a,b [--json]',
     "kb harvest": 'barry-cache kb harvest [--source context] [--kind success|failure --summary "..." [--expected "..." --actual "..." --files a,b]] [--json]',
     "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--kind lesson|anti_pattern|decision_pattern] [--confidence low|medium|high] [--dry-run] [--json]',
     "kb contribute": "barry-cache kb contribute [--dry-run] [--json]",
@@ -836,8 +839,8 @@ Usage:
   barry-cache resume --task "..." [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
   barry-cache failure record --summary "..." --expected "..." --actual "..." [--json]
-  barry-cache kb cq login --api-key <key> [--url https://cq.exchange]
-  barry-cache kb search --source cq --query "..." [--json]
+  barry-cache kb cq login --api-key <key> [--url https://api.cq.exchange]
+  barry-cache kb search --source cq --query "..." --domains a,b [--json]
   barry-cache kb harvest [--kind success|failure --summary "..."] [--json]
   barry-cache kb propose lesson --title "..." --problem "..." --recommendation "..." --why "..." [--dry-run] [--json]
   barry-cache kb contribute [--dry-run] [--json]

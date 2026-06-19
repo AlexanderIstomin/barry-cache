@@ -122,6 +122,13 @@ describe("cqSearch", () => {
       cqSearch({ endpoint: "https://cq.example.com", query: "x", fetchImpl: failing }),
     ).rejects.toThrow("cq search failed: 503");
   });
+
+  test("throws a clear error when the endpoint returns non-JSON (HTML)", async () => {
+    const html = (async () => new Response("<!doctype html><html></html>", { status: 200, headers: { "content-type": "text/html" } })) as unknown as typeof fetch;
+    await expect(
+      cqSearch({ endpoint: "https://cq.exchange", query: "x", fetchImpl: html }),
+    ).rejects.toThrow("non-JSON");
+  });
 });
 
 describe("lessonToCqProposal", () => {

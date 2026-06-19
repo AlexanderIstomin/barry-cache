@@ -129,8 +129,15 @@ export async function cqSearch(options: {
   if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
   const doFetch = options.fetchImpl ?? fetch;
   const response = await doFetch(url, { headers });
-  if (!response.ok) throw new Error(`cq search failed: ${response.status} ${response.statusText}`);
-  const { units } = parseKnowledgeUnitList(JSON.parse(await response.text()));
+  const body = await response.text();
+  if (!response.ok) throw new Error(`cq search failed: ${response.status} ${response.statusText}${body ? ` — ${body.slice(0, 200)}` : ""}`);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new Error(`cq returned non-JSON from ${url} (content-type ${response.headers.get("content-type") ?? "unknown"}). Is the URL the API base, e.g. https://api.cq.exchange?`);
+  }
+  const { units } = parseKnowledgeUnitList(parsed);
   const queryTokens = tokens(options.query);
   const results = units
     .map((unit) => cqUnitToSearchItem(unit))

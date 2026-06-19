@@ -170,12 +170,22 @@ describe("kb search --source cq", () => {
         await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({
           shared_kb: { contribution: "share_enabled", cq: { url: `http://127.0.0.1:${server.port}` } },
         }));
-        const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "flaky", "--json"]);
+        const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "flaky", "--domains", "ci", "--json"]);
         expect(result.code).toBe(0);
         expect(JSON.parse(result.stdout).results[0].id).toBe("ku_x");
       } finally {
         server.stop(true);
       }
+    });
+  });
+
+  test("requires at least one domain", async () => {
+    await withTempRepo(async (repo) => {
+      await mkdir(join(repo, ".barry-cache"), { recursive: true });
+      await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({ shared_kb: { contribution: "share_enabled", cq: { url: "https://api.cq.exchange" } } }));
+      const result = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "x"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("requires at least one domain");
     });
   });
 
@@ -258,7 +268,7 @@ describe("kb cq login", () => {
         const creds = JSON.parse(await readFile(join(repo, ".barry-cache/cq-credentials.json"), "utf8"));
         expect(creds.api_key).toBe("secret-key");
 
-        const search = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "flaky", "--json"]);
+        const search = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "flaky", "--domains", "ci", "--json"]);
         expect(search.code).toBe(0);
         expect(captured.auth).toBe("Bearer secret-key");
       } finally {
