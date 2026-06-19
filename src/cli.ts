@@ -489,7 +489,7 @@ async function handleKbProposeCommand(parsed: ParsedArgs, repo: string, json: bo
     return;
   }
   const path = await writeProposalToOutbox({ repo, lesson });
-  print({ lesson, outbox: path }, json, `Queued lesson ${lesson.id} to the local shared KB outbox.\nRun \`barry-cache kb submit\` (share-enabled) to send it to a Brain.`);
+  print({ lesson, outbox: path }, json, `Queued lesson ${lesson.id} to the local shared KB outbox.\nRun \`barry-cache kb contribute\` (share-enabled) to send it to cq.`);
 }
 
 async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {

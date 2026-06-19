@@ -5,15 +5,6 @@ export const sharedKbContributionModes = ["local-only", "preview-only", "share-e
 export type SharedKbContributionMode = "local_only" | "preview_only" | "share_enabled";
 export type SharedKbContributionModeInput = typeof sharedKbContributionModes[number];
 
-export type SharedKbBrainScope = "private" | "global";
-export type SharedKbBrainTrustPolicy = "company" | "global";
-
-export interface SharedKbBrainConfig {
-  url: string;
-  scope: SharedKbBrainScope;
-  trust_policy?: SharedKbBrainTrustPolicy;
-}
-
 export interface SharedKbCqConfig {
   url: string;
   api_key_ref?: string;
@@ -23,7 +14,6 @@ export interface SharedKbCqConfig {
 export interface SharedKbConfig {
   shared_kb: {
     contribution: SharedKbContributionMode;
-    brain?: SharedKbBrainConfig;
     cq?: SharedKbCqConfig;
   };
 }
@@ -40,12 +30,10 @@ export async function readSharedKbConfig(options: { repo: string }): Promise<Sha
 
   const raw = JSON.parse(await readText(path)) as unknown;
   const contribution = readContributionMode(raw) ?? defaultContribution;
-  const brain = readBrainConfig(raw);
   const cq = readCqConfig(raw);
   return {
     shared_kb: {
       contribution,
-      ...(brain ? { brain } : {}),
       ...(cq ? { cq } : {}),
     },
   };
@@ -56,7 +44,6 @@ export async function writeSharedKbContributionMode(options: { repo: string; mod
   const next: SharedKbConfig = {
     shared_kb: {
       contribution: options.mode,
-      ...(current.shared_kb.brain ? { brain: current.shared_kb.brain } : {}),
       ...(current.shared_kb.cq ? { cq: current.shared_kb.cq } : {}),
     },
   };
@@ -64,12 +51,12 @@ export async function writeSharedKbContributionMode(options: { repo: string; mod
   return next;
 }
 
-export async function writeSharedKbBrainConfig(options: { repo: string; brain: SharedKbBrainConfig }): Promise<SharedKbConfig> {
-  if (!/^https?:\/\//.test(options.brain.url)) {
-    throw new Error("brain.url must start with http:// or https://");
+export async function writeSharedKbCqConfig(options: { repo: string; cq: SharedKbCqConfig }): Promise<SharedKbConfig> {
+  if (!/^https?:\/\//.test(options.cq.url)) {
+    throw new Error("cq.url must start with http:// or https://");
   }
   const current = await readSharedKbConfig({ repo: options.repo });
-  const next: SharedKbConfig = { shared_kb: { contribution: current.shared_kb.contribution, brain: options.brain } };
+  const next: SharedKbConfig = { shared_kb: { contribution: current.shared_kb.contribution, cq: options.cq } };
   await persist(options.repo, next);
   return next;
 }
@@ -95,16 +82,6 @@ function readContributionMode(raw: unknown): SharedKbContributionMode | undefine
   return undefined;
 }
 
-function readBrainConfig(raw: unknown): SharedKbBrainConfig | undefined {
-  const brain = sharedKbSection(raw)?.brain;
-  if (typeof brain !== "object" || brain === null) return undefined;
-  const candidate = brain as { url?: unknown; scope?: unknown; trust_policy?: unknown };
-  if (typeof candidate.url !== "string") return undefined;
-  if (candidate.scope !== "private" && candidate.scope !== "global") return undefined;
-  const trustPolicy = candidate.trust_policy === "company" || candidate.trust_policy === "global" ? candidate.trust_policy : undefined;
-  return { url: candidate.url, scope: candidate.scope, ...(trustPolicy ? { trust_policy: trustPolicy } : {}) };
-}
-
 function readCqConfig(raw: unknown): SharedKbCqConfig | undefined {
   const cq = sharedKbSection(raw)?.cq;
   if (typeof cq !== "object" || cq === null) return undefined;
@@ -118,9 +95,9 @@ function readCqConfig(raw: unknown): SharedKbCqConfig | undefined {
   return config;
 }
 
-function sharedKbSection(raw: unknown): { contribution?: unknown; brain?: unknown; cq?: unknown } | undefined {
+function sharedKbSection(raw: unknown): { contribution?: unknown; cq?: unknown } | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const sharedKb = (raw as { shared_kb?: unknown }).shared_kb;
   if (typeof sharedKb !== "object" || sharedKb === null) return undefined;
-  return sharedKb as { contribution?: unknown; brain?: unknown; cq?: unknown };
+  return sharedKb as { contribution?: unknown; cq?: unknown };
 }
