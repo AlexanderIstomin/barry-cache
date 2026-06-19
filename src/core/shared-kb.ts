@@ -1,12 +1,12 @@
 export const sharedKbKinds = ["lesson", "anti_pattern", "decision_pattern"] as const;
-export const sharedKbStatuses = ["submitted", "quarantined", "reviewed", "trusted", "rejected", "challenged", "deprecated", "revoked", "superseded"] as const;
+export const sharedKbStatuses = ["submitted", "reviewed", "trusted", "challenged"] as const;
 
 export type SharedKbKind = typeof sharedKbKinds[number];
 export type SharedKbStatus = typeof sharedKbStatuses[number];
 export type SharedKbConfidence = "low" | "medium" | "high";
 
 export interface SharedKbEvidence {
-  source_type: "anonymized_project_pattern" | "community_report" | "maintainer_review";
+  source_type: "community_report";
   count: number;
   has_follow_up_fix?: boolean;
   notes?: string;
@@ -26,7 +26,6 @@ export interface SharedKbLesson {
   evidence: SharedKbEvidence;
   tags: string[];
   updated_at: string;
-  supersedes?: string[];
 }
 
 // Barry's canonical search-item shape, reused by the cq consume adapter.
@@ -78,7 +77,7 @@ export function validateSharedKbLesson(value: unknown): string[] {
   for (const field of ["title", "problem", "recommendation", "why", "updated_at"] as const) {
     if (lesson[field] !== undefined && !isNonEmptyString(lesson[field])) errors.push(`invalid field: ${field}`);
   }
-  for (const field of ["applies_when", "avoid_when", "tags", "supersedes"] as const) {
+  for (const field of ["applies_when", "avoid_when", "tags"] as const) {
     const fieldValue = lesson[field];
     if (fieldValue !== undefined && (!Array.isArray(fieldValue) || fieldValue.some((item) => !isNonEmptyString(item)))) {
       errors.push(`invalid field: ${field}`);
@@ -103,7 +102,7 @@ function validateEvidence(value: unknown): string[] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return ["invalid field: evidence"];
   const evidence = value as Partial<SharedKbEvidence>;
   const errors: string[] = [];
-  if (!["anonymized_project_pattern", "community_report", "maintainer_review"].includes(String(evidence.source_type))) errors.push("invalid field: evidence.source_type");
+  if (evidence.source_type !== "community_report") errors.push("invalid field: evidence.source_type");
   if (!Number.isInteger(evidence.count) || Number(evidence.count) < 1) errors.push("invalid field: evidence.count");
   if (evidence.has_follow_up_fix !== undefined && typeof evidence.has_follow_up_fix !== "boolean") errors.push("invalid field: evidence.has_follow_up_fix");
   if (evidence.notes !== undefined && !isNonEmptyString(evidence.notes)) errors.push("invalid field: evidence.notes");

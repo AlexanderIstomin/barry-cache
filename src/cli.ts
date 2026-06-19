@@ -197,12 +197,6 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         if (!result.ok || (strict && result.warnings.length > 0)) process.exitCode = 1;
         break;
       }
-      case "generate-adapters":
-        print({ ok: true, message: "Run barry-cache init to regenerate adapters." }, json);
-        break;
-      case "lint-wiki":
-        print({ ok: true, message: "No wiki lint rules failed." }, json);
-        break;
       default:
         if (parsed.command === "help" || parsed.command === "--help" || parsed.command === "-h") {
           console.log(usageText());

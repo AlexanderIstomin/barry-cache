@@ -17,5 +17,7 @@
 - `SHARED_KB_ADR`: docs/context/adrs/ADR-0007-store-shared-solutions-kb-as-signed-static-packs.md
 - `SHARED_KB_OPT_IN_ADR`: docs/context/adrs/ADR-0008-require-explicit-opt-in-for-shared-kb-contribution.md
 - `CQ_INTEROP_ADR`: docs/context/adrs/ADR-0011-interoperate-with-cq-and-retire-the-standalone-global-hive-mind.md
+- `CQ_RESIDUE_ADR`: docs/context/adrs/ADR-0014-remove-unused-hive-mind-signing-residue-and-simplify-validator-identity.md
+- `SHARED_KB_IDENTITY`: src/core/shared-kb-identity.ts
 - `CQ_PIVOT_ROADMAP`: docs/superpowers/plans/2026-06-19-cq-interop-pivot.md
 - `README`: README.md

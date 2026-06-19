@@ -8,6 +8,6 @@ test("creates a validator identity once and reloads the same id", async () => {
     const b = await loadOrCreateValidatorIdentity({ repo, now: "2026-06-19T00:00:00.000Z" });
     expect(b.validator_id).toBe(a.validator_id);
     expect(b.created_at).toBe("2026-06-18T00:00:00.000Z");
-    expect(a.validator_id.startsWith("validator-sha256-")).toBe(true);
+    expect(a.validator_id.startsWith("validator-")).toBe(true);
   });
 });

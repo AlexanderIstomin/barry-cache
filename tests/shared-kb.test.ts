@@ -13,7 +13,7 @@ function validLesson(overrides: Partial<SharedKbLesson> = {}): SharedKbLesson {
     why: "This prevents stale claims from becoming canonical truth.",
     avoid_when: ["the source cannot be safely anonymized"],
     confidence: "high",
-    evidence: { source_type: "anonymized_project_pattern", count: 1, has_follow_up_fix: true },
+    evidence: { source_type: "community_report", count: 1, has_follow_up_fix: true },
     tags: ["agents", "validation"],
     updated_at: "2026-06-03T10:00:00.000Z",
     ...overrides,
