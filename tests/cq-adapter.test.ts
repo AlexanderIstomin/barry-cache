@@ -1,5 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { cqSearch, cqUnitToSearchItem, parseKnowledgeUnitList } from "../src/core/cq-adapter";
+import { buildProvenanceNote, cqContribute, cqSearch, cqUnitToSearchItem, lessonToCqProposal, parseKnowledgeUnitList } from "../src/core/cq-adapter";
+import type { SharedKbLesson } from "../src/core/shared-kb";
+
+function sampleLesson(overrides: Partial<SharedKbLesson> = {}): SharedKbLesson {
+  return {
+    id: "lesson-20260619-abcd1234",
+    kind: "lesson",
+    status: "submitted",
+    title: "Validate handoffs before trusting them",
+    problem: "Agents trust stale handoff summaries.",
+    applies_when: ["multi-agent workflow"],
+    recommendation: "Validate claims before treating them as durable context.",
+    why: "Stale operational memory becomes false canonical truth.",
+    avoid_when: ["the source cannot be anonymized"],
+    confidence: "medium",
+    evidence: { source_type: "community_report", count: 2, has_follow_up_fix: true },
+    tags: ["agents", "validation"],
+    updated_at: "2026-06-19T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 describe("parseKnowledgeUnitList", () => {
   test("unwraps the data array and reads next_cursor", () => {
@@ -101,5 +121,56 @@ describe("cqSearch", () => {
     await expect(
       cqSearch({ endpoint: "https://cq.example.com", query: "x", fetchImpl: failing }),
     ).rejects.toThrow("cq search failed: 503");
+  });
+});
+
+describe("lessonToCqProposal", () => {
+  test("maps a lesson to cq propose shape with provenance in detail", () => {
+    const req = lessonToCqProposal(sampleLesson(), { createdBy: "validator-xyz" });
+    expect(req.domains).toEqual(["agents", "validation"]);
+    expect(req.insight.summary).toBe("Validate handoffs before trusting them");
+    expect(req.insight.action).toBe("Validate claims before treating them as durable context.");
+    expect(req.insight.detail).toContain("Agents trust stale handoff summaries.");
+    expect(req.insight.detail).toContain("Source: Barry Cache lesson lesson-20260619-abcd1234");
+    expect(req.context?.pattern).toContain("applies when: multi-agent workflow");
+    expect(req.context?.pattern).toContain("avoid when: the source cannot be anonymized");
+    expect(req.created_by).toBe("validator-xyz");
+  });
+
+  test("throws when the lesson has no tags (cq requires >=1 domain)", () => {
+    expect(() => lessonToCqProposal(sampleLesson({ tags: [] }))).toThrow("at least one domain");
+  });
+
+  test("provenance note includes evidence source and count", () => {
+    expect(buildProvenanceNote(sampleLesson())).toContain("community_report, 2 observation(s), has follow-up fix");
+  });
+});
+
+describe("cqContribute", () => {
+  test("POSTs the proposal and returns the assigned id", async () => {
+    let captured: { method?: string | undefined; body?: unknown; auth?: string | null } = {};
+    const fetchImpl = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      captured = { method: init?.method, body: JSON.parse(String(init?.body)), auth: new Headers(init?.headers).get("authorization") };
+      return new Response(JSON.stringify({ data: { id: "ku_" + "a".repeat(32) } }), { status: 201 });
+    }) as typeof fetch;
+    const res = await cqContribute({
+      endpoint: "https://cq.example.com/",
+      proposal: { domains: ["ci"], insight: { summary: "s", detail: "d", action: "a" } },
+      apiKey: "secret",
+      fetchImpl,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.id).toBe("ku_" + "a".repeat(32));
+    expect(captured.method).toBe("POST");
+    expect(captured.auth).toBe("Bearer secret");
+    expect((captured.body as { domains: string[] }).domains).toEqual(["ci"]);
+  });
+
+  test("returns ok:false with the error body on non-2xx", async () => {
+    const fetchImpl = (async () => new Response("bad domains", { status: 422 })) as unknown as typeof fetch;
+    const res = await cqContribute({ endpoint: "https://cq.example.com", proposal: { domains: ["x"], insight: { summary: "s", detail: "d", action: "a" } }, fetchImpl });
+    expect(res.ok).toBe(false);
+    expect(res.status).toBe(422);
+    expect(res.error).toContain("bad domains");
   });
 });

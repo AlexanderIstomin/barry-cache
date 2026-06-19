@@ -1,5 +1,5 @@
 import { scoreText, tokens } from "./shared-kb";
-import type { SharedKbConfidence, SharedKbKind, SharedKbSearchItem, SharedKbSearchResult, SharedKbStatus } from "./shared-kb";
+import type { SharedKbConfidence, SharedKbKind, SharedKbLesson, SharedKbSearchItem, SharedKbSearchResult, SharedKbStatus } from "./shared-kb";
 
 export const CQ_SCHEMA_VERSION = "v1";
 
@@ -138,4 +138,53 @@ export async function cqSearch(options: {
     .filter((item) => item.score === queryTokens.length)
     .sort((a, b) => b.score - a.score || b.confidence.localeCompare(a.confidence) || a.id.localeCompare(b.id));
   return { query: options.query, results };
+}
+
+export interface CqProposeRequest {
+  domains: string[];
+  insight: { summary: string; detail: string; action: string };
+  context?: CqContext;
+  created_by?: string;
+}
+
+export function buildProvenanceNote(lesson: SharedKbLesson): string {
+  const fix = lesson.evidence.has_follow_up_fix ? ", has follow-up fix" : "";
+  return `Source: Barry Cache lesson ${lesson.id} (${lesson.evidence.source_type}, ${lesson.evidence.count} observation(s)${fix}).`;
+}
+
+export function lessonToCqProposal(lesson: SharedKbLesson, opts: { createdBy?: string } = {}): CqProposeRequest {
+  if (!lesson.tags || lesson.tags.length === 0) {
+    throw new Error("cq propose requires at least one domain; lesson has no tags");
+  }
+  const detail = [lesson.problem, lesson.why, buildProvenanceNote(lesson)].filter(Boolean).join("\n\n");
+  const patternParts: string[] = [];
+  if (lesson.applies_when.length > 0) patternParts.push(`applies when: ${lesson.applies_when.join("; ")}`);
+  if (lesson.avoid_when.length > 0) patternParts.push(`avoid when: ${lesson.avoid_when.join("; ")}`);
+  const request: CqProposeRequest = {
+    domains: lesson.tags,
+    insight: { summary: lesson.title, detail, action: lesson.recommendation },
+  };
+  if (patternParts.length > 0) request.context = { pattern: patternParts.join(" | ") };
+  if (opts.createdBy) request.created_by = opts.createdBy;
+  return request;
+}
+
+export async function cqContribute(options: {
+  endpoint: string;
+  proposal: CqProposeRequest;
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ ok: boolean; status: number; id?: string; error?: string }> {
+  const url = `${options.endpoint.replace(/\/+$/, "")}/api/v1/knowledge`;
+  const headers: Record<string, string> = { accept: "application/json", "content-type": "application/json" };
+  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
+  const doFetch = options.fetchImpl ?? fetch;
+  const response = await doFetch(url, { method: "POST", headers, body: JSON.stringify(options.proposal) });
+  const text = await response.text();
+  if (!response.ok) return { ok: false, status: response.status, error: text || response.statusText };
+  try {
+    const parsed = JSON.parse(text) as { data?: { id?: unknown } };
+    if (typeof parsed.data?.id === "string") return { ok: true, status: response.status, id: parsed.data.id };
+  } catch { /* empty/non-JSON body is acceptable */ }
+  return { ok: true, status: response.status };
 }
