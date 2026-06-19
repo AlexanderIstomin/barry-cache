@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cqUnitToSearchItem, parseKnowledgeUnitList } from "../src/core/cq-adapter";
+import { cqSearch, cqUnitToSearchItem, parseKnowledgeUnitList } from "../src/core/cq-adapter";
 
 describe("parseKnowledgeUnitList", () => {
   test("unwraps the data array and reads next_cursor", () => {
@@ -51,5 +51,54 @@ describe("cqUnitToSearchItem", () => {
     expect(item.status).toBe("reviewed");
     expect(item.confidence).toBe("low");
     expect(item.title).toBe("s");
+  });
+});
+
+function fakeFetch(body: unknown, captured: { url?: string; auth?: string | null }): typeof fetch {
+  return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    captured.url = String(input);
+    captured.auth = new Headers(init?.headers).get("authorization");
+    return new Response(JSON.stringify(body), { status: 200 });
+  }) as typeof fetch;
+}
+
+describe("cqSearch", () => {
+  test("returns only units matching all query tokens, scored and sorted", async () => {
+    const captured: { url?: string; auth?: string | null } = {};
+    const body = {
+      data: [
+        { id: "ku_hit", confidence: 0.8, insight: { summary: "retry storms", detail: "ci flaky tests", action: "pin" } },
+        { id: "ku_miss", confidence: 0.9, insight: { summary: "unrelated", detail: "database", action: "index" } },
+      ],
+    };
+    const result = await cqSearch({
+      endpoint: "https://cq.example.com",
+      query: "flaky tests",
+      apiKey: "secret",
+      fetchImpl: fakeFetch(body, captured),
+    });
+    expect(result.results.map((r) => r.id)).toEqual(["ku_hit"]);
+    expect(result.results[0]?.score).toBe(2);
+    expect(captured.url).toBe("https://cq.example.com/api/v1/knowledge");
+    expect(captured.auth).toBe("Bearer secret");
+  });
+
+  test("passes domains as a query parameter", async () => {
+    const captured: { url?: string; auth?: string | null } = {};
+    await cqSearch({
+      endpoint: "https://cq.example.com/",
+      query: "x",
+      domains: ["testing", "ci"],
+      fetchImpl: fakeFetch({ data: [] }, captured),
+    });
+    expect(captured.url).toBe("https://cq.example.com/api/v1/knowledge?domains=testing%2Cci");
+    expect(captured.auth).toBeNull();
+  });
+
+  test("throws on a non-OK response", async () => {
+    const failing = (async () => new Response("nope", { status: 503 })) as typeof fetch;
+    await expect(
+      cqSearch({ endpoint: "https://cq.example.com", query: "x", fetchImpl: failing }),
+    ).rejects.toThrow("cq search failed: 503");
   });
 });

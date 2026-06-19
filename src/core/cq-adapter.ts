@@ -1,4 +1,5 @@
-import type { SharedKbConfidence, SharedKbKind, SharedKbSearchItem, SharedKbStatus } from "./shared-kb";
+import { scoreText, tokens } from "./shared-kb";
+import type { SharedKbConfidence, SharedKbKind, SharedKbSearchItem, SharedKbSearchResult, SharedKbStatus } from "./shared-kb";
 
 export const CQ_SCHEMA_VERSION = "v1";
 
@@ -95,4 +96,31 @@ export function cqUnitToSearchItem(unit: CqKnowledgeUnit): SharedKbSearchItem {
       unit.pattern ?? "",
     ].join(" ").toLowerCase(),
   };
+}
+
+export async function cqSearch(options: {
+  endpoint: string;
+  query: string;
+  domains?: string[];
+  apiKey?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<SharedKbSearchResult> {
+  const base = options.endpoint.replace(/\/+$/, "");
+  const suffix = options.domains && options.domains.length > 0
+    ? `?domains=${encodeURIComponent(options.domains.join(","))}`
+    : "";
+  const url = `${base}/api/v1/knowledge${suffix}`;
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
+  const doFetch = options.fetchImpl ?? fetch;
+  const response = await doFetch(url, { headers });
+  if (!response.ok) throw new Error(`cq search failed: ${response.status} ${response.statusText}`);
+  const { units } = parseKnowledgeUnitList(JSON.parse(await response.text()));
+  const queryTokens = tokens(options.query);
+  const results = units
+    .map((unit) => cqUnitToSearchItem(unit))
+    .map((item) => ({ ...item, score: scoreText(item.text, queryTokens) }))
+    .filter((item) => item.score === queryTokens.length)
+    .sort((a, b) => b.score - a.score || b.confidence.localeCompare(a.confidence) || a.id.localeCompare(b.id));
+  return { query: options.query, results };
 }
