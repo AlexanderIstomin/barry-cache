@@ -50,14 +50,18 @@ self-validation trust work as research rather than a running production system.
    via its REST `GET /api/v1/knowledge` (or MCP `query`) and contribute via `POST /api/v1/knowledge`
    (or MCP `propose`), mapping Barry lesson ⇄ cq `knowledge_unit`.
 2. **Carry forward four advantages, nothing else.**
-   - *Source-backed provenance* — KEEP local; attach as a quality signal on cq contributions.
+   - *Source-backed provenance* — KEEP local. cq's `propose.json` has **no structured provenance
+     field**, so on the cq path provenance rides as a prose note in `insight.detail` plus
+     `created_by`. Structured provenance is preserved canonically in Barry's own lesson record.
    - *Structured harvest from finalize/failure/context records* (`shared-kb-harvest.ts`) — KEEP
      local as the feeder into cq `propose`.
    - *Local privacy sanitize / bias-to-drop* (redaction in `shared-kb.ts`, harvest checklist) —
      KEEP local; sanitize before anything leaves the machine.
-   - *Ed25519 signed contributions/attestations* (`shared-kb-identity.ts`, `shared-kb-intake.ts`,
-     `shared-kb-attestation.ts`) — KEEP as a "verified contributor" mark / candidate upstream
-     contribution to cq.
+   - *Ed25519 signing* (`shared-kb-identity.ts`, `shared-kb-intake.ts`, `shared-kb-attestation.ts`)
+     — **cannot be carried to vanilla cq** (`propose.json` has no signature field; `confirm.json`
+     is `unit_id`-only with `additionalProperties:false`). Signing is therefore retained only for
+     **local outbox integrity** and for a future **Barry-aware brain**; it is not part of the cq
+     contribution path. (Verified against cq `schema/*.json` during SP/Phase grounding, 2026-06-19.)
 3. **Retire the global-commons machinery.** The Brain server (`brain/`), signed static-pack
    distribution (snapshot build in `shared-kb.ts`, `kb build`), and the running maturation engine
    (`brain/core/maturation.ts`) are removed from the shipped product. `kb submit`/`kb attest`
@@ -91,6 +95,13 @@ Costs and follow-ups:
   kept; the redundant parts (maturation/reputation engine, Brain) become the research artifact.
 - **External dependency risk.** cq is a proof-of-concept; its schema will churn and Mozilla.ai
   may sunset it. Mitigated by the versioned adapter + canonical-local-format hedge.
+- **cq contract limits (grounded against `schema/*.json`, 2026-06-19).** cq's remote REST API is
+  only `GET`/`POST /api/v1/knowledge` (+ `GET /api/v1/users/me/api-keys`); `confirm`/`flag` are
+  **local MCP tools, not REST endpoints**, and `propose.json` carries no signature/evidence/
+  structured-provenance. Therefore the cq contribution path is **propose-only**: Barry contributes
+  provenance-annotated lessons over REST and does **not** send attestations to cq (rich/signed
+  attestation stays local / Barry-aware-brain). The consume adapter maps cq's authoritative fields
+  (`domains`, `evidence.*`, `context.*`, `flags`), not the architecture-doc prose.
 - **Supersession.** This ADR supersedes ADR-0007 (static-pack global storage/distribution),
   ADR-0009 (ship a self-hostable global Brain), and ADR-0010 (run a global self-validation engine);
   those are marked `superseded`. The portable-core and company-tier *ideas* from ADR-0009/0010 are
