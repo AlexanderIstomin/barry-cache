@@ -597,14 +597,23 @@ async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json:
     return;
   }
   const identity = await loadOrCreateValidatorIdentity({ repo, now: new Date().toISOString() });
-  const proposals = lessons.map((lesson) => ({ lesson, proposal: lessonToCqProposal(lesson, { createdBy: identity.validator_id }) }));
+
+  const proposals: Array<{ lesson: any; proposal: any }> = [];
+  const results: Array<{ lesson: string; ok: boolean; status: number; id?: string; error?: string }> = [];
+  for (const lesson of lessons) {
+    const id = typeof (lesson as { id?: unknown }).id === "string" ? (lesson as { id: string }).id : "<unknown>";
+    try {
+      proposals.push({ lesson, proposal: lessonToCqProposal(lesson, { createdBy: identity.validator_id }) });
+    } catch (error) {
+      results.push({ lesson: id, ok: false, status: 0, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
 
   if (parsed.flags.get("dry-run") === true) {
     print({ cq: cq.url, proposals: proposals.map((p) => p.proposal) }, json, `Dry run — would contribute ${proposals.length} lesson(s) to ${cq.url}/api/v1/knowledge.`);
     return;
   }
   const apiKey = await resolveCqApiKey(repo, cq);
-  const results: Array<{ lesson: string; ok: boolean; status: number; id?: string; error?: string }> = [];
   for (const { lesson, proposal } of proposals) {
     const contributeOptions: Parameters<typeof cqContribute>[0] = { endpoint: cq.url, proposal };
     if (apiKey) contributeOptions.apiKey = apiKey;
@@ -618,7 +627,6 @@ async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json:
   const ok = results.filter((r) => r.ok).length;
   if (ok < results.length) process.exitCode = 1;
   print({ contributed: ok, results }, json, `Contributed ${ok}/${results.length} lesson(s) to ${cq.url}.`);
-}
 
 async function handleKbCqCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
   const action = parsed.positionals[1];
