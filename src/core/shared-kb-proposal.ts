@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { readText, repoPath, writeText } from "./fs";
-import { validateSharedKbLesson, type SharedKbConfidence, type SharedKbLesson } from "./shared-kb";
+import { validateSharedKbLesson, type SharedKbConfidence, type SharedKbKind, type SharedKbLesson } from "./shared-kb";
 import { stableStringify } from "./shared-kb-intake";
 
 export interface LessonProposalInput {
@@ -15,12 +15,12 @@ export interface LessonProposalInput {
   confidence: SharedKbConfidence;
 }
 
-export function buildLessonProposal(input: LessonProposalInput, opts: { now: string }): SharedKbLesson {
+export function buildLessonProposal(input: LessonProposalInput, opts: { now: string; kind?: SharedKbKind }): SharedKbLesson {
   const day = opts.now.slice(0, 10).replaceAll("-", "");
   const hash = createHash("sha256").update(stableStringify(input)).digest("hex").slice(0, 8);
   const lesson: SharedKbLesson = {
     id: `lesson-${day}-${hash}`,
-    kind: "lesson",
+    kind: opts.kind ?? "lesson",
     status: "submitted",
     title: input.title,
     problem: input.problem,

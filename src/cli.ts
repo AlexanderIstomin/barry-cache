@@ -6,12 +6,12 @@ import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
-import { buildSharedKbSnapshot, searchSharedKb, validateSharedKbSource, type SharedKbConfidence } from "./core/shared-kb";
+import { buildSharedKbSnapshot, searchSharedKb, sharedKbKinds, validateSharedKbSource, type SharedKbConfidence } from "./core/shared-kb";
 import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig } from "./core/shared-kb-config";
 import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
 import { buildAttestation, buildLessonIntakeBatch, submitAttestation, submitIntakeBatch } from "./core/shared-kb-brain-client";
-import { buildHarvestCandidate, readLatestHarvestSources, type HarvestCandidate, type HarvestSource } from "./core/shared-kb-harvest";
+import { buildHarvestCandidate, readContextHarvestSources, readLatestHarvestSources, type HarvestCandidate, type HarvestSource } from "./core/shared-kb-harvest";
 import type { AgentInstructionTarget, InitResult } from "./core/types";
 import { validateProject } from "./core/validate";
 
@@ -485,7 +485,9 @@ async function handleKbHarvestCommand(parsed: ParsedArgs, repo: string, json: bo
   }
 
   const summary = optionalString(parsed, "summary", commandUsage("kb harvest"));
+  const source = optionalString(parsed, "source", commandUsage("kb harvest"));
   let sources: HarvestSource[];
+  let truncated = false;
   if (summary) {
     const kind = optionalChoice(parsed, "kind", harvestKinds, "success", commandUsage("kb harvest"));
     sources = [{
@@ -495,12 +497,19 @@ async function handleKbHarvestCommand(parsed: ParsedArgs, repo: string, json: bo
       actual: optionalString(parsed, "actual", commandUsage("kb harvest")),
       files: optionalList(parsed, "files", commandUsage("kb harvest")),
     }];
+  } else if (source === "context") {
+    const result = await readContextHarvestSources({ repo });
+    sources = result.sources;
+    truncated = result.truncated;
+  } else if (source) {
+    throw new CliArgumentError(`Unknown harvest source: ${source} (expected "context", or pass --summary)`, { usage: commandUsage("kb harvest") });
   } else {
     sources = await readLatestHarvestSources({ repo });
   }
 
   const candidates = sources.map(buildHarvestCandidate);
-  print({ candidates }, json, formatHarvestCandidates(candidates));
+  const note = truncated ? `\n\n(Showing the first ${sources.length} candidates; more were capped — harvest in batches.)` : "";
+  print({ candidates, truncated }, json, formatHarvestCandidates(candidates) + note);
 }
 
 function formatHarvestCandidates(candidates: HarvestCandidate[]): string {
@@ -537,6 +546,7 @@ async function handleKbProposeCommand(parsed: ParsedArgs, repo: string, json: bo
     });
   }
   const confidence = optionalChoice(parsed, "confidence", sharedKbConfidences, "medium", commandUsage("kb propose"));
+  const lessonKind = optionalChoice(parsed, "kind", sharedKbKinds, "lesson", commandUsage("kb propose"));
   const lesson = buildLessonProposal(
     {
       title: requiredString(parsed, "title", commandUsage("kb propose")),
@@ -548,7 +558,7 @@ async function handleKbProposeCommand(parsed: ParsedArgs, repo: string, json: bo
       tags: splitCsv(requiredString(parsed, "tags", commandUsage("kb propose"))),
       confidence: confidence as SharedKbConfidence,
     },
-    { now: new Date().toISOString() },
+    { now: new Date().toISOString(), kind: lessonKind },
   );
 
   if (parsed.flags.get("dry-run") === true) {
@@ -762,8 +772,8 @@ function commandUsage(command: string): string | undefined {
     "kb validate": "barry-cache kb validate --source /path/to/shared-kb [--json]",
     "kb build": "barry-cache kb build --source /path/to/shared-kb --out /path/to/dist [--private-key private.pem --public-key public.pem] [--json]",
     "kb search": 'barry-cache kb search --source /path-or-url --query "..." [--include-reviewed] [--json]',
-    "kb harvest": 'barry-cache kb harvest [--kind success|failure --summary "..." [--expected "..." --actual "..." --files a,b]] [--json]',
-    "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--confidence low|medium|high] [--dry-run] [--json]',
+    "kb harvest": 'barry-cache kb harvest [--source context] [--kind success|failure --summary "..." [--expected "..." --actual "..." --files a,b]] [--json]',
+    "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--kind lesson|anti_pattern|decision_pattern] [--confidence low|medium|high] [--dry-run] [--json]',
     "kb submit": "barry-cache kb submit [--brain https://your-brain] [--dry-run] [--json]",
     "kb attest": 'barry-cache kb attest --lesson-id lesson-... [--result confirmed|contradicted|not_applicable] [--evidence-type observed_success|observed_failure|static_review] [--confidence 0.8] [--context-tags a,b] [--upstream-seen id1,id2] [--brain https://your-brain] [--dry-run] [--json]',
     "kb sharing": "barry-cache kb sharing <status|set> [--json]",

@@ -280,6 +280,38 @@ describe("kb cli", () => {
     });
   });
 
+  test("kb propose --kind decision_pattern carries the taxonomy", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "preview-only"]);
+      const result = await runCli(repo, [...proposeArgs, "--kind", "decision_pattern", "--dry-run", "--json"]);
+      expect(result.code).toBe(0);
+      expect(JSON.parse(result.stdout).lesson.kind).toBe("decision_pattern");
+    });
+  });
+
+  test("kb harvest --source context drafts candidates from existing decision facts", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "preview-only"]);
+      const featDir = join(repo, "docs/context/features/demo");
+      await mkdir(featDir, { recursive: true });
+      await writeFile(join(featDir, "FACTS.jsonl"), `${JSON.stringify({ id: "D1", subject: "Signed intake batches", predicate: "bind", object: "the full payload via recursive stable stringify", src: ["X"], status: "active", kind: "decision", updated_at: "2026-06-18T00:00:00.000Z" })}\n`);
+
+      const result = await runCli(repo, ["kb", "harvest", "--source", "context"]);
+      expect(result.stderr).toBe("");
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("kb propose lesson --kind decision_pattern");
+      expect(result.stdout.toLowerCase()).toContain("anonymize");
+    });
+  });
+
+  test("kb harvest --source context is blocked in local-only mode", async () => {
+    await withTempRepo(async (repo) => {
+      const result = await runCli(repo, ["kb", "harvest", "--source", "context"]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("preview-only or share-enabled");
+    });
+  });
+
   test("kb attest requires share-enabled mode", async () => {
     await withTempRepo(async (repo) => {
       await runCli(repo, ["kb", "sharing", "set", "preview-only"]);

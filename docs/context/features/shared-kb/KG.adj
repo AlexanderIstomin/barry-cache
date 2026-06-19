@@ -31,3 +31,6 @@ maturation promotes reviewed-to-trusted
 maturation demotes on-credible-contradiction
 global-policy self-validates via-attestation-reputation-maturation
 company-policy keeps immediate-trust
+kb-harvest-context bootstrap-harvests decisions-adrs-failures
+context-harvest excludes implemented-facts-and-src-paths
+kb-propose supports lesson-anti-pattern-decision-pattern-kinds

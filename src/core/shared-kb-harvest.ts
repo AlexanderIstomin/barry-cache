@@ -1,7 +1,11 @@
-import { readTextIfExists, repoPath } from "./fs";
+import { exists, listDirs, readTextIfExists, repoPath } from "./fs";
+import { listAdrs } from "./adr";
+import type { SharedKbKind } from "./shared-kb";
+
+export type HarvestSourceKind = "success" | "failure" | "decision";
 
 export interface HarvestSource {
-  kind: "success" | "failure";
+  kind: HarvestSourceKind;
   summary: string;
   files?: string[] | undefined;
   expected?: string | undefined;
@@ -15,6 +19,7 @@ export interface HarvestGate {
 }
 
 export interface HarvestDraft {
+  kind: SharedKbKind;
   title: string;
   problem: string;
   applies_when: string[];
@@ -51,6 +56,10 @@ export function harvestGate(source: HarvestSource): HarvestGate {
   if (source.kind === "failure") {
     score += 3;
     reasons.push("validated failure is high-value reusable knowledge");
+  }
+  if (source.kind === "decision") {
+    score += 3;
+    reasons.push("decision record captures reusable architecture/policy knowledge");
   }
   if (VALUE_TERMS.test(text)) {
     score += 2;
@@ -91,23 +100,7 @@ function deriveTags(source: HarvestSource): string[] {
 export function buildHarvestCandidate(source: HarvestSource): HarvestCandidate {
   const gate = harvestGate(source);
   const tags = deriveTags(source);
-  const isFailure = source.kind === "failure";
-  const draft: HarvestDraft = {
-    title: isFailure ? `Avoid: ${shorten(source.summary, 70)}` : `Lesson: ${shorten(source.summary, 70)}`,
-    problem: isFailure
-      ? `Expected ${shorten(source.expected ?? "the intended behavior", 80)}, but observed ${shorten(source.actual ?? "a different result", 80)}.`
-      : shorten(source.summary, 160),
-    applies_when: ["similar tasks in this area (generalize before sharing)"],
-    recommendation: isFailure
-      ? "Describe the guard or fix that prevents this failure class (rewrite generically)."
-      : "Describe the reusable approach that worked here (rewrite generically).",
-    why: isFailure
-      ? "Captured from a validated failure; explain the underlying reason it recurs."
-      : "Captured from a completed task; explain why this generalizes beyond one repo.",
-    avoid_when: ["the source cannot be safely anonymized"],
-    tags,
-    confidence: isFailure ? "medium" : "low",
-  };
+  const draft = draftForSource(source, tags);
   const checklist = [
     "Anonymize: remove project, product, customer, and team names; describe the pattern generically.",
     "Strip private file paths (no src/…, app/…), secrets, tokens, non-example URLs, and emails.",
@@ -118,10 +111,52 @@ export function buildHarvestCandidate(source: HarvestSource): HarvestCandidate {
   return { source, gate, draft, checklist, proposeCommand: renderProposeCommand(draft) };
 }
 
+function draftForSource(source: HarvestSource, tags: string[]): HarvestDraft {
+  const avoid_when = ["the source cannot be safely anonymized"];
+  if (source.kind === "failure") {
+    return {
+      kind: "anti_pattern",
+      title: `Avoid: ${shorten(source.summary, 70)}`,
+      problem: `Expected ${shorten(source.expected ?? "the intended behavior", 80)}, but observed ${shorten(source.actual ?? "a different result", 80)}.`,
+      applies_when: ["similar tasks in this area (generalize before sharing)"],
+      recommendation: "Describe the guard or fix that prevents this failure class (rewrite generically).",
+      why: "Captured from a validated failure; explain the underlying reason it recurs.",
+      avoid_when,
+      tags,
+      confidence: "medium",
+    };
+  }
+  if (source.kind === "decision") {
+    return {
+      kind: "decision_pattern",
+      title: `Decision: ${shorten(source.summary, 70)}`,
+      problem: `A recurring architecture/policy decision: ${shorten(source.summary, 120)} (generalize the context).`,
+      applies_when: ["systems facing this design choice (generalize before sharing)"],
+      recommendation: "State the chosen approach and when it applies (rewrite generically, no project specifics).",
+      why: "Captured from a project decision record; explain the tradeoffs and when this choice is right.",
+      avoid_when,
+      tags,
+      confidence: "low",
+    };
+  }
+  return {
+    kind: "lesson",
+    title: `Lesson: ${shorten(source.summary, 70)}`,
+    problem: shorten(source.summary, 160),
+    applies_when: ["similar tasks in this area (generalize before sharing)"],
+    recommendation: "Describe the reusable approach that worked here (rewrite generically).",
+    why: "Captured from a completed task; explain why this generalizes beyond one repo.",
+    avoid_when,
+    tags,
+    confidence: "low",
+  };
+}
+
 function renderProposeCommand(draft: HarvestDraft): string {
   const q = (value: string) => `"${value.replaceAll('"', "'")}"`;
   return [
     "barry-cache kb propose lesson",
+    `--kind ${draft.kind}`,
     `--title ${q(draft.title)}`,
     `--problem ${q(draft.problem)}`,
     `--applies-when ${q(draft.applies_when.join(","))}`,
@@ -170,4 +205,66 @@ function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value.filter((item): item is string => typeof item === "string");
   return items.length > 0 ? items : undefined;
+}
+
+const CONTEXT_HARVEST_CAP = 50;
+
+/**
+ * Bootstrap-harvest the existing context backlog: active `decision` facts,
+ * active ADRs, and recorded validation failures. Deliberately excludes
+ * repo-specific `implemented`/`test` facts and superseded records, and never
+ * includes the `src` file pointers. Output still flows through the
+ * agent-in-the-loop sanitize → propose path.
+ */
+export async function readContextHarvestSources(options: { repo: string }, opts?: { cap?: number }): Promise<{ sources: HarvestSource[]; truncated: boolean }> {
+  const sources: HarvestSource[] = [];
+
+  const featuresDir = repoPath(options.repo, "docs/context/features");
+  for (const slug of await listDirs(featuresDir)) {
+    const text = await readTextIfExists(repoPath(featuresDir, slug, "FACTS.jsonl"));
+    for (const line of text.split(/\r?\n/)) {
+      if (line.trim().length === 0) continue;
+      try {
+        const fact = JSON.parse(line) as { status?: string; kind?: string; subject?: string; predicate?: string; object?: string };
+        if (fact.status === "active" && fact.kind === "decision" && typeof fact.subject === "string") {
+          sources.push({ kind: "decision", summary: `${fact.subject} ${fact.predicate ?? ""} ${fact.object ?? ""}`.replace(/\s+/g, " ").trim() });
+        }
+      } catch {
+        // skip malformed fact rows
+      }
+    }
+  }
+
+  if (await exists(repoPath(options.repo, "docs/context/adrs"))) {
+    for (const adr of await listAdrs({ repo: options.repo })) {
+      if (adr.status !== "active") continue;
+      const decision = extractAdrDecision(adr.content);
+      sources.push({ kind: "decision", summary: `${adr.title}.${decision ? ` ${decision}` : ""}`.trim() });
+    }
+  }
+
+  const failureText = await readTextIfExists(repoPath(options.repo, ".context-state/failures/failures.jsonl"));
+  for (const line of failureText.split(/\r?\n/)) {
+    if (line.trim().length === 0) continue;
+    try {
+      const record = JSON.parse(line) as { summary?: string; expected?: string; actual?: string };
+      if (typeof record.summary === "string") {
+        sources.push({ kind: "failure", summary: record.summary, expected: record.expected, actual: record.actual });
+      }
+    } catch {
+      // skip malformed failure rows
+    }
+  }
+
+  const cap = opts?.cap ?? CONTEXT_HARVEST_CAP;
+  return { sources: sources.slice(0, cap), truncated: sources.length > cap };
+}
+
+function extractAdrDecision(content: string): string {
+  const start = content.search(/^##\s+Decision\s*$/m);
+  if (start === -1) return "";
+  const after = content.slice(start).replace(/^##\s+Decision\s*$/m, "");
+  const next = after.search(/^##\s/m);
+  const section = next === -1 ? after : after.slice(0, next);
+  return shorten(section.replace(/\s+/g, " ").trim(), 200);
 }

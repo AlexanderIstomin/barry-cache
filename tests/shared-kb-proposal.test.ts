@@ -22,6 +22,14 @@ test("buildLessonProposal returns a valid submitted lesson with defaults and a d
   expect(lesson.updated_at).toBe("2026-06-18T10:00:00.000Z");
 });
 
+test("buildLessonProposal can carry a non-default kind (decision_pattern / anti_pattern)", () => {
+  const decision = buildLessonProposal(input, { now: "2026-06-18T10:00:00.000Z", kind: "decision_pattern" });
+  expect(decision.kind).toBe("decision_pattern");
+  const anti = buildLessonProposal(input, { now: "2026-06-18T10:00:00.000Z", kind: "anti_pattern" });
+  expect(anti.kind).toBe("anti_pattern");
+  expect(buildLessonProposal(input, { now: "2026-06-18T10:00:00.000Z" }).kind).toBe("lesson");
+});
+
 test("buildLessonProposal is deterministic for identical input", () => {
   const a = buildLessonProposal(input, { now: "2026-06-18T10:00:00.000Z" });
   const b = buildLessonProposal(input, { now: "2026-06-18T10:00:00.000Z" });
