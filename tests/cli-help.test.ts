@@ -93,14 +93,14 @@ describe("cli argument help", () => {
     });
   });
 
-  test("kb validate without source shows command usage", async () => {
+  test("kb search without query shows command usage", async () => {
     await withTempRepo(async (repo) => {
-      const result = await runCli(repo, ["kb", "validate"]);
+      const result = await runCli(repo, ["kb", "search", "--source", "cq"]);
 
       expect(result.stdout).toBe("");
       expect(result.code).toBe(1);
-      expect(result.stderr).toContain("Missing required --source");
-      expect(result.stderr).toContain("barry-cache kb validate --source /path/to/shared-kb");
+      expect(result.stderr).toContain("Missing required --query");
+      expect(result.stderr).toContain("barry-cache kb search --source cq");
     });
   });
 
