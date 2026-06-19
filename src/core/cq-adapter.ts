@@ -1,3 +1,5 @@
+import type { SharedKbConfidence, SharedKbKind, SharedKbSearchItem, SharedKbStatus } from "./shared-kb";
+
 export const CQ_SCHEMA_VERSION = "v1";
 
 export interface CqInsight {
@@ -42,4 +44,55 @@ export function parseKnowledgeUnitList(json: unknown): CqKnowledgeUnitList {
   });
   const cursor = (json as { next_cursor?: unknown }).next_cursor;
   return { units, nextCursor: typeof cursor === "string" ? cursor : null };
+}
+
+function cqKindToBarryKind(kind?: string): SharedKbKind {
+  if (kind === "pitfall") return "anti_pattern";
+  if (kind === "tool-recommendation") return "decision_pattern";
+  return "lesson";
+}
+
+function cqConfidenceToBand(confidence?: number): SharedKbConfidence {
+  const value = typeof confidence === "number" ? confidence : 0;
+  if (value >= 0.66) return "high";
+  if (value >= 0.33) return "medium";
+  return "low";
+}
+
+function cqConfidenceToStatus(confidence?: number): SharedKbStatus {
+  return typeof confidence === "number" && confidence >= 0.6 ? "trusted" : "reviewed";
+}
+
+export function cqUnitToSearchItem(unit: CqKnowledgeUnit): SharedKbSearchItem {
+  const insight = unit.insight ?? {};
+  const title = insight.summary ?? unit.id;
+  const summary = [insight.detail, insight.action].filter(Boolean).join(" ").trim();
+  const tags = Array.isArray(unit.domain) ? unit.domain : [];
+  const kind = cqKindToBarryKind(unit.kind);
+  const status = cqConfidenceToStatus(unit.confidence);
+  const confidence = cqConfidenceToBand(unit.confidence);
+  return {
+    id: unit.id,
+    kind,
+    status,
+    title,
+    summary,
+    tags,
+    confidence,
+    updated_at: unit.last_confirmed ?? unit.first_observed ?? "",
+    text: [
+      unit.id,
+      kind,
+      status,
+      title,
+      summary,
+      tags.join(" "),
+      insight.summary ?? "",
+      insight.detail ?? "",
+      insight.action ?? "",
+      unit.language ?? "",
+      (unit.frameworks ?? []).join(" "),
+      unit.pattern ?? "",
+    ].join(" ").toLowerCase(),
+  };
 }
