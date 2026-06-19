@@ -1,3 +1,5 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { exists, readText, repoPath, writeText } from "./fs";
 
 export const sharedKbContributionModes = ["local-only", "preview-only", "share-enabled"] as const;
@@ -59,6 +61,37 @@ export async function writeSharedKbCqConfig(options: { repo: string; cq: SharedK
   const next: SharedKbConfig = { shared_kb: { contribution: current.shared_kb.contribution, cq: options.cq } };
   await persist(options.repo, next);
   return next;
+}
+
+// The cq API key is a secret, so it lives in its own file (not config.json) under the
+// git-ignored .barry-cache/ directory, written with owner-only permissions.
+export function cqCredentialsPath(repo: string): string {
+  return repoPath(repo, ".barry-cache/cq-credentials.json");
+}
+
+export async function writeCqApiKey(options: { repo: string; apiKey: string }): Promise<string> {
+  const path = cqCredentialsPath(options.repo);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify({ api_key: options.apiKey }, null, 2)}\n`, { mode: 0o600 });
+  return path;
+}
+
+export async function readCqApiKey(options: { repo: string }): Promise<string | undefined> {
+  const path = cqCredentialsPath(options.repo);
+  if (!(await exists(path))) return undefined;
+  try {
+    const raw = JSON.parse(await readText(path)) as { api_key?: unknown };
+    return typeof raw.api_key === "string" && raw.api_key.length > 0 ? raw.api_key : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function clearCqApiKey(options: { repo: string }): Promise<boolean> {
+  const path = cqCredentialsPath(options.repo);
+  if (!(await exists(path))) return false;
+  await rm(path, { force: true });
+  return true;
 }
 
 export function toSharedKbContributionMode(input: string): SharedKbContributionMode | undefined {

@@ -7,7 +7,7 @@ import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
 import { sharedKbKinds, type SharedKbConfidence, type SharedKbSearchResult } from "./core/shared-kb";
-import { formatSharedKbContributionMode, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeSharedKbContributionMode, type SharedKbConfig, type SharedKbCqConfig } from "./core/shared-kb-config";
+import { clearCqApiKey, formatSharedKbContributionMode, readCqApiKey, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeCqApiKey, writeSharedKbContributionMode, writeSharedKbCqConfig, type SharedKbConfig, type SharedKbCqConfig } from "./core/shared-kb-config";
 import { cqContribute, cqSearch, lessonToCqProposal } from "./core/cq-adapter";
 import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
@@ -390,6 +390,11 @@ async function handleKbCommand(parsed: ParsedArgs, repo: string, json: boolean):
     return;
   }
 
+  if (action === "cq") {
+    await handleKbCqCommand(parsed, repo, json);
+    return;
+  }
+
   if (action === "harvest") {
     await handleKbHarvestCommand(parsed, repo, json);
     return;
@@ -520,7 +525,7 @@ async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json:
     print({ cq: cq.url, proposals: proposals.map((p) => p.proposal) }, json, `Dry run — would contribute ${proposals.length} lesson(s) to ${cq.url}/api/v1/knowledge.`);
     return;
   }
-  const apiKey = resolveCqApiKey(cq);
+  const apiKey = await resolveCqApiKey(repo, cq);
   const results: Array<{ lesson: string; ok: boolean; status: number; id?: string; error?: string }> = [];
   for (const { lesson, proposal } of proposals) {
     const contributeOptions: Parameters<typeof cqContribute>[0] = { endpoint: cq.url, proposal };
@@ -531,6 +536,71 @@ async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json:
   const ok = results.filter((r) => r.ok).length;
   if (ok < results.length) process.exitCode = 1;
   print({ contributed: ok, results }, json, `Contributed ${ok}/${results.length} lesson(s) to ${cq.url}.`);
+}
+
+async function handleKbCqCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[1];
+  if (action === "login") {
+    await handleKbCqLogin(parsed, repo, json);
+    return;
+  }
+  if (action === "logout") {
+    const removed = await clearCqApiKey({ repo });
+    const config = await writeSharedKbContributionMode({ repo, mode: "local_only" });
+    print({ removed, contribution: config.shared_kb.contribution }, json, `Disconnected from cq${removed ? " (stored key removed)" : ""}; sharing set to local-only.`);
+    return;
+  }
+  if (action === "status") {
+    const config = await readSharedKbConfig({ repo });
+    const cq = config.shared_kb.cq;
+    const hasKey = (await readCqApiKey({ repo })) !== undefined || Boolean(cq?.api_key_ref);
+    if (!cq) {
+      print({ cq: null, hasKey, contribution: config.shared_kb.contribution }, json, "No cq endpoint configured. Run `barry-cache kb cq login --api-key <key>`.");
+      return;
+    }
+    print({ cq, hasKey, contribution: config.shared_kb.contribution }, json, [
+      `cq endpoint: ${cq.url}`,
+      `API key: ${hasKey ? "configured" : "missing"}`,
+      `Sharing: ${formatSharedKbContributionMode(config.shared_kb.contribution)}`,
+    ].join("\n"));
+    return;
+  }
+  throw new CliArgumentError(action ? `Unknown cq action: ${action}` : "Missing cq action", { usage: commandUsage("kb cq") });
+}
+
+async function handleKbCqLogin(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const apiKey = await resolveLoginApiKey(parsed);
+  if (!apiKey) {
+    throw new CliArgumentError("Provide your cq API key with --api-key <key>, the CQ_API_KEY env var, or piped via stdin.", { usage: commandUsage("kb cq login") });
+  }
+  const url = optionalString(parsed, "url", commandUsage("kb cq login")) ?? "https://cq.exchange";
+  const domains = optionalList(parsed, "domains", commandUsage("kb cq login"));
+  const current = await readSharedKbConfig({ repo });
+  const existingDomains = current.shared_kb.cq?.domains;
+  const cq: SharedKbCqConfig = { url, ...(domains.length ? { domains } : existingDomains ? { domains: existingDomains } : {}) };
+  await writeSharedKbCqConfig({ repo, cq });
+  const credentialsPath = await writeCqApiKey({ repo, apiKey });
+  await writeSharedKbContributionMode({ repo, mode: "share_enabled" });
+  print({ url, credentials: credentialsPath, contribution: "share_enabled" }, json, [
+    `Connected to cq at ${url}.`,
+    `API key stored in ${credentialsPath} (git-ignored).`,
+    "Sharing is now share-enabled — `kb search --source cq` and `kb contribute` will use this key.",
+  ].join("\n"));
+}
+
+async function resolveLoginApiKey(parsed: ParsedArgs): Promise<string | undefined> {
+  const flag = optionalString(parsed, "api-key", commandUsage("kb cq login"));
+  if (flag) return flag.trim();
+  if (process.env.CQ_API_KEY) return process.env.CQ_API_KEY.trim();
+  const piped = (await readStdin()).trim();
+  return piped.length > 0 ? piped : undefined;
+}
+
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) return "";
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function splitCsv(value: string): string[] {
@@ -584,18 +654,21 @@ async function handleKbSearchCq(repo: string, json: boolean, query: string): Pro
   }
   const searchOptions: Parameters<typeof cqSearch>[0] = { endpoint: cq.url, query };
   if (cq.domains) searchOptions.domains = cq.domains;
-  const apiKey = resolveCqApiKey(cq);
+  const apiKey = await resolveCqApiKey(repo, cq);
   if (apiKey) searchOptions.apiKey = apiKey;
   const result = await cqSearch(searchOptions);
   print(result, json, formatKbSearchResults(result));
 }
 
-function resolveCqApiKey(cq: SharedKbCqConfig): string | undefined {
-  if (!cq.api_key_ref) return undefined;
-  const match = /^env:(.+)$/.exec(cq.api_key_ref);
-  if (!match) return undefined;
-  const name = match[1];
-  return name ? process.env[name] : undefined;
+// Resolve the cq API key: an explicit `api_key_ref` (env:NAME, for CI) wins, otherwise
+// fall back to the key stored locally by `kb cq login`.
+async function resolveCqApiKey(repo: string, cq: SharedKbCqConfig): Promise<string | undefined> {
+  if (cq.api_key_ref) {
+    const match = /^env:(.+)$/.exec(cq.api_key_ref);
+    const fromEnv = match?.[1] ? process.env[match[1]] : undefined;
+    if (fromEnv) return fromEnv;
+  }
+  return await readCqApiKey({ repo });
 }
 
 function formatValidateReport(headline: string, result: Awaited<ReturnType<typeof validateProject>>, strict: boolean): string {
@@ -731,7 +804,9 @@ function commandUsage(command: string): string | undefined {
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
-    kb: "barry-cache kb <search|harvest|propose|contribute|sharing> [--json]",
+    kb: "barry-cache kb <search|harvest|propose|contribute|cq|sharing> [--json]",
+    "kb cq": "barry-cache kb cq <login|logout|status> [--json]",
+    "kb cq login": "barry-cache kb cq login --api-key <key> [--url https://cq.exchange] [--domains a,b] [--json]",
     "kb search": 'barry-cache kb search --source cq --query "..." [--json]',
     "kb harvest": 'barry-cache kb harvest [--source context] [--kind success|failure --summary "..." [--expected "..." --actual "..." --files a,b]] [--json]',
     "kb propose": 'barry-cache kb propose lesson --title "..." --problem "..." --applies-when "a,b" --recommendation "..." --why "..." --avoid-when "x,y" --tags "a,b" [--kind lesson|anti_pattern|decision_pattern] [--confidence low|medium|high] [--dry-run] [--json]',
@@ -761,6 +836,7 @@ Usage:
   barry-cache resume --task "..." [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
   barry-cache failure record --summary "..." --expected "..." --actual "..." [--json]
+  barry-cache kb cq login --api-key <key> [--url https://cq.exchange]
   barry-cache kb search --source cq --query "..." [--json]
   barry-cache kb harvest [--kind success|failure --summary "..."] [--json]
   barry-cache kb propose lesson --title "..." --problem "..." --recommendation "..." --why "..." [--dry-run] [--json]

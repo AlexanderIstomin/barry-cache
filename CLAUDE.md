@@ -42,4 +42,15 @@ Decision records:
 - Use `bun run barry -- adr new --title "<decision>" --tags "<tags>"`.
 - Add or update a `kind: "decision"` fact in `docs/context/features/*/FACTS.jsonl` with `src` pointing to the ADR file.
 - Do not create ADRs for routine bug fixes, local refactors, temporary notes, or uncertain ideas.
-	
+
+<!-- barry-cache:start -->
+## Barry Cache
+
+This repo uses Barry Cache for shared, source-backed project context. The full command set and memory policy live in `AGENTS.md` at the repo root — read it before doing non-trivial work.
+
+Start a task with:
+
+```bash
+bun run barry -- resume --task "<task>"
+```
+<!-- barry-cache:end -->

@@ -112,22 +112,15 @@ barry-cache kb sharing set local-only|preview-only|share-enabled
 
 ### Connecting to cq
 
-cq's hosted service ([cq.exchange](https://github.com/mozilla-ai/cq)) issues a time-limited API key after you **sign in with GitHub or Google**; self-hosted cq instances set up their own auth. Export the key and point Barry at the endpoint via `.barry-cache/config.json` (repo-local, git-ignored):
+cq's hosted service ([cq.exchange](https://github.com/mozilla-ai/cq)) issues a time-limited API key after you **sign in with GitHub or Google** (self-hosted instances set up their own auth). Hand that key to Barry once:
 
 ```bash
-export CQ_API_KEY="…"   # from your cq sign-in
+barry-cache kb cq login --api-key <key>        # add --url <addr> for a self-hosted/private cq
 ```
 
-```json
-{
-  "shared_kb": {
-    "contribution": "share_enabled",
-    "cq": { "url": "https://cq.exchange", "api_key_ref": "env:CQ_API_KEY", "domains": ["frontend", "testing"] }
-  }
-}
-```
+That stores the key in `.barry-cache/cq-credentials.json` (git-ignored, owner-only), records the endpoint, and enables sharing — `kb search --source cq` and `kb contribute` then just work. `kb cq status` shows the connection; `kb cq logout` removes the key and returns to local-only. You can also pipe the key (`pbpaste | barry-cache kb cq login`) instead of passing it on the command line.
 
-`api_key_ref` resolves `env:NAME` at call time, so the key stays out of the repo. The key is required for writes (`contribute`) and optional for read-only `search`. See the [cq docs](https://github.com/mozilla-ai/cq) for obtaining a key and the current contract.
+For CI, skip `login` and instead set `shared_kb.cq` to `{ "url": "…", "api_key_ref": "env:CQ_API_KEY" }` in `.barry-cache/config.json` and export `CQ_API_KEY` (an `api_key_ref` takes precedence over a stored key). See the [cq docs](https://github.com/mozilla-ai/cq) for obtaining a key and the current contract.
 
 ## Development
 

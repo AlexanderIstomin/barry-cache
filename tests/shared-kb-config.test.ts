@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readSharedKbConfig, sharedKbContributionModes, sharedKbConfigPath, toSharedKbContributionMode, writeSharedKbContributionMode } from "../src/core/shared-kb-config";
+import { clearCqApiKey, cqCredentialsPath, readCqApiKey, readSharedKbConfig, sharedKbContributionModes, sharedKbConfigPath, toSharedKbContributionMode, writeCqApiKey, writeSharedKbContributionMode } from "../src/core/shared-kb-config";
 import { withTempRepo } from "./helpers";
 
 describe("shared KB contribution config", () => {
@@ -67,6 +67,19 @@ describe("shared KB contribution config", () => {
       const config = await readSharedKbConfig({ repo });
       expect(config.shared_kb.contribution).toBe("share_enabled");
       expect(config.shared_kb.cq?.url).toBe("https://cq.example.com");
+    });
+  });
+
+  test("stores, reads, and clears the cq API key in a separate credentials file", async () => {
+    await withTempRepo(async (repo) => {
+      expect(await readCqApiKey({ repo })).toBeUndefined();
+      const path = await writeCqApiKey({ repo, apiKey: "sk-test-123" });
+      expect(path).toBe(join(repo, ".barry-cache/cq-credentials.json"));
+      expect(cqCredentialsPath(repo)).toBe(path);
+      expect(await readCqApiKey({ repo })).toBe("sk-test-123");
+      expect(await clearCqApiKey({ repo })).toBe(true);
+      expect(await readCqApiKey({ repo })).toBeUndefined();
+      expect(await clearCqApiKey({ repo })).toBe(false);
     });
   });
 });

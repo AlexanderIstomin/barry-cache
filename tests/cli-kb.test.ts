@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { withTempRepo } from "./helpers";
@@ -231,6 +231,51 @@ describe("kb contribute", () => {
       const result = await runCli(repo, ["kb", "contribute"]);
       expect(result.code).toBe(1);
       expect(result.stderr).toContain("share-enabled");
+    });
+  });
+});
+
+describe("kb cq login", () => {
+  test("stores the key + endpoint, enables sharing, and search uses the stored key", async () => {
+    await withTempRepo(async (repo) => {
+      const captured: { auth: string | null } = { auth: null };
+      const server = Bun.serve({
+        port: 0,
+        fetch: (req) => {
+          captured.auth = new Headers(req.headers).get("authorization");
+          return new Response(JSON.stringify({ data: [{ id: "ku_x", domains: ["ci"], evidence: { confidence: 0.8 }, insight: { summary: "flaky ci", detail: "tests flake", action: "retry" } }] }), { status: 200 });
+        },
+      });
+      try {
+        const login = await runCli(repo, ["kb", "cq", "login", "--api-key", "secret-key", "--url", `http://127.0.0.1:${server.port}`]);
+        expect(login.stderr).toBe("");
+        expect(login.code).toBe(0);
+        expect(login.stdout).toContain("Connected to cq");
+
+        const cfg = JSON.parse(await readFile(join(repo, ".barry-cache/config.json"), "utf8"));
+        expect(cfg.shared_kb.contribution).toBe("share_enabled");
+        expect(cfg.shared_kb.cq.url).toBe(`http://127.0.0.1:${server.port}`);
+        const creds = JSON.parse(await readFile(join(repo, ".barry-cache/cq-credentials.json"), "utf8"));
+        expect(creds.api_key).toBe("secret-key");
+
+        const search = await runCli(repo, ["kb", "search", "--source", "cq", "--query", "flaky", "--json"]);
+        expect(search.code).toBe(0);
+        expect(captured.auth).toBe("Bearer secret-key");
+      } finally {
+        server.stop(true);
+      }
+    });
+  });
+
+  test("logout removes the key and sets local-only", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "cq", "login", "--api-key", "k", "--url", "https://cq.example.com"]);
+      const out = await runCli(repo, ["kb", "cq", "logout"]);
+      expect(out.code).toBe(0);
+      expect(out.stdout).toContain("local-only");
+      const cfg = JSON.parse(await readFile(join(repo, ".barry-cache/config.json"), "utf8"));
+      expect(cfg.shared_kb.contribution).toBe("local_only");
+      await expect(readFile(join(repo, ".barry-cache/cq-credentials.json"), "utf8")).rejects.toThrow();
     });
   });
 });
