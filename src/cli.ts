@@ -598,7 +598,7 @@ async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json:
   }
   const identity = await loadOrCreateValidatorIdentity({ repo, now: new Date().toISOString() });
 
-  const proposals: Array<{ lesson: any; proposal: any }> = [];
+  const proposals: Array<{ lesson: (typeof lessons)[number]; proposal: ReturnType<typeof lessonToCqProposal> }> = [];
   const results: Array<{ lesson: string; ok: boolean; status: number; id?: string; error?: string }> = [];
   for (const lesson of lessons) {
     const id = typeof (lesson as { id?: unknown }).id === "string" ? (lesson as { id: string }).id : "<unknown>";
@@ -627,6 +627,7 @@ async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json:
   const ok = results.filter((r) => r.ok).length;
   if (ok < results.length) process.exitCode = 1;
   print({ contributed: ok, results }, json, `Contributed ${ok}/${results.length} lesson(s) to ${cq.url}.`);
+}
 
 async function handleKbCqCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
   const action = parsed.positionals[1];
