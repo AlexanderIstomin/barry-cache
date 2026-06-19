@@ -10,7 +10,7 @@ import { startReviewServer } from "./core/review-server";
 import { sharedKbKinds, tokens, type SharedKbConfidence, type SharedKbSearchResult } from "./core/shared-kb";
 import { clearCqApiKey, formatSharedKbContributionMode, readCqApiKey, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeCqApiKey, writeSharedKbContributionMode, writeSharedKbCqConfig, type SharedKbConfig, type SharedKbCqConfig } from "./core/shared-kb-config";
 import { cqContribute, cqSearch, lessonToCqProposal } from "./core/cq-adapter";
-import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "./core/shared-kb-proposal";
+import { buildLessonProposal, listOutboxLessons, removeOutboxLesson, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
 import { buildHarvestCandidate, readContextHarvestSources, readLatestHarvestSources, type HarvestCandidate, type HarvestSource } from "./core/shared-kb-harvest";
 import type { AgentInstructionTarget, InitResult } from "./core/types";
@@ -605,6 +605,10 @@ async function handleKbContributeCommand(parsed: ParsedArgs, repo: string, json:
     const contributeOptions: Parameters<typeof cqContribute>[0] = { endpoint: cq.url, proposal };
     if (apiKey) contributeOptions.apiKey = apiKey;
     const res = await cqContribute(contributeOptions);
+    // cq propose has no idempotency key, so drop each lesson from the outbox once it is
+    // accepted — re-running contribute must not re-submit and create duplicate units.
+    // Failed sends stay queued for a later retry.
+    if (res.ok) await removeOutboxLesson({ repo, id: lesson.id });
     results.push({ lesson: lesson.id, ...res });
   }
   const ok = results.filter((r) => r.ok).length;

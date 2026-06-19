@@ -244,6 +244,32 @@ describe("kb contribute", () => {
     });
   });
 
+  test("does not re-submit lessons after a successful contribution", async () => {
+    await withTempRepo(async (repo) => {
+      const received: any[] = [];
+      const server = Bun.serve({
+        port: 0,
+        fetch: async (req) => { received.push(await req.json()); return new Response(JSON.stringify({ data: { id: "ku_" + "a".repeat(32) } }), { status: 201 }); },
+      });
+      try {
+        await mkdir(join(repo, ".barry-cache"), { recursive: true });
+        await writeFile(join(repo, ".barry-cache/config.json"), JSON.stringify({
+          shared_kb: { contribution: "share_enabled", cq: { url: `http://127.0.0.1:${server.port}` } },
+        }));
+        expect((await runCli(repo, proposeArgs)).code).toBe(0);
+
+        const first = await runCli(repo, ["kb", "contribute", "--json"]);
+        expect(first.code).toBe(0);
+        expect(JSON.parse(first.stdout).contributed).toBe(1);
+
+        const second = await runCli(repo, ["kb", "contribute", "--json"]);
+        expect(second.code).toBe(0);
+        expect(JSON.parse(second.stdout).contributed).toBe(0);
+        expect(received.length).toBe(1);
+      } finally { server.stop(true); }
+    });
+  });
+
   test("requires share-enabled mode", async () => {
     await withTempRepo(async (repo) => {
       await mkdir(join(repo, ".barry-cache"), { recursive: true });

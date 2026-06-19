@@ -61,6 +61,18 @@ describe("validate drift detection", () => {
     });
   });
 
+  test("resolves indented and '=' separated IDMAP entries for drift, matching validateIdMap", async () => {
+    await withTempRepo(async (repo) => {
+      await scaffold(repo);
+      await writeFeature(repo, "demo", [fact({ src: ["GONE"] })], "  - `GONE` = src/core/gone.ts\n");
+      const result = await validateProject({ repo, now: NOW });
+      // The entry must not be flagged as an unknown source id (validateIdMap accepts it) ...
+      expect(result.errors.some((e) => e.message.includes("unknown source id"))).toBe(false);
+      // ... and drift detection must resolve the same entry and warn on its missing target.
+      expect(result.warnings.some((w) => w.message.includes("missing source file") && w.message.includes("GONE"))).toBe(true);
+    });
+  });
+
   test("warns about an aged open-question/risk fact but not a recent one", async () => {
     await withTempRepo(async (repo) => {
       await scaffold(repo);

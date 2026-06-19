@@ -96,8 +96,10 @@ async function readIdmapTokens(path: string): Promise<Map<string, string>> {
   const tokens = new Map<string, string>();
   const text = await readTextIfExists(path);
   for (const line of text.split(/\r?\n/)) {
-    const match = /^-\s*`([^`]+)`:\s*(\S.*?)\s*$/.exec(line);
-    if (match && match[1] && match[2]) tokens.set(match[1], match[2]);
+    // Parse the same rows validateIdMap accepts (trimmed, `:` or `=` separator), so every
+    // token recognized as a valid source id is also resolvable for drift detection.
+    const match = /^-\s+`([^`]+)`\s*(?::|=)\s*(.+)$/.exec(line.trim());
+    if (match && match[1] && match[2]) tokens.set(match[1], match[2].trim());
   }
   return tokens;
 }

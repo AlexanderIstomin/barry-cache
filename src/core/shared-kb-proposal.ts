@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { readText, repoPath, writeText } from "./fs";
 import { validateSharedKbLesson, type SharedKbConfidence, type SharedKbKind, type SharedKbLesson } from "./shared-kb";
 import { stableStringify } from "./shared-kb-intake";
@@ -46,6 +46,10 @@ export async function writeProposalToOutbox(opts: { repo: string; lesson: Shared
   const path = repoPath(outboxDir(opts.repo), `${opts.lesson.id}.json`);
   await writeText(path, `${JSON.stringify(opts.lesson, null, 2)}\n`);
   return path;
+}
+
+export async function removeOutboxLesson(opts: { repo: string; id: string }): Promise<void> {
+  await rm(repoPath(outboxDir(opts.repo), `${opts.id}.json`), { force: true });
 }
 
 export async function listOutboxLessons(opts: { repo: string }): Promise<SharedKbLesson[]> {

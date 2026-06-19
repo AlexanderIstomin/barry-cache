@@ -1,5 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
-import { exists, readText, repoPath, writeText } from "./fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { exists, readText, repoPath } from "./fs";
 import { validatorIdFromPem } from "./shared-kb-intake";
 
 export interface ValidatorIdentity {
@@ -35,6 +37,9 @@ export async function loadOrCreateValidatorIdentity(opts: { repo: string; now: s
     private_key_pem,
     created_at: opts.now,
   };
-  await writeText(path, `${JSON.stringify(identity, null, 2)}\n`);
+  // The identity file holds the validator's ed25519 private key, so write it
+  // owner-only (matching the cq credentials file) even though .barry-cache/ is git-ignored.
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
   return identity;
 }
