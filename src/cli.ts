@@ -768,7 +768,7 @@ function formatValidateReport(headline: string, result: Awaited<ReturnType<typeo
   if (result.warnings.length > 0) {
     lines.push("", `${result.warnings.length} warning(s)${strict ? " (failing: --strict)" : ""}:`);
     for (const issue of result.warnings) lines.push(`  ${formatIssue(issue)}`);
-    if (!strict && result.ok) lines.push("", "Run `validate --strict` to treat warnings as failures (e.g. in CI).");
+    if (!strict && result.ok) lines.push("", "Run `barry-cache validate --strict` to treat warnings as failures (e.g. in CI).");
   }
   return lines.join("\n");
 }

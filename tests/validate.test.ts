@@ -71,6 +71,15 @@ describe("validate drift detection", () => {
     });
   });
 
+  test("treats a backslash path as path-like so drift detection works cross-platform", async () => {
+    await withTempRepo(async (repo) => {
+      await scaffold(repo);
+      await writeFeature(repo, "demo", [fact({ src: ["src\\core\\gone.ts"] })]);
+      const result = await validateProject({ repo, now: NOW });
+      expect(result.warnings.some((w) => w.message.includes("missing source file"))).toBe(true);
+    });
+  });
+
   test("resolves indented and '=' separated IDMAP entries for drift, matching validateIdMap", async () => {
     await withTempRepo(async (repo) => {
       await scaffold(repo);

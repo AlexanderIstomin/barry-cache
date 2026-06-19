@@ -73,7 +73,7 @@ export async function validateProject({ repo, now = new Date(), staleAfterDays =
         }
         // Drift / provenance-rot: resolve IDMAP tokens (or treat path-like sources as paths)
         // and warn when the referenced file no longer exists.
-        const resolved = idmap.get(source) ?? (source.includes("/") ? source : undefined);
+        const resolved = idmap.get(source) ?? (/[/\\]/.test(source) ? source : undefined);
         if (resolved) {
           const label = idmap.has(source) ? `${resolved} (${source})` : resolved;
           if (escapesRepo(repo, resolved)) {
