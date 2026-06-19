@@ -57,4 +57,42 @@ describe("shared KB contribution config", () => {
       await expect(writeSharedKbBrainConfig({ repo, brain: { url: "ftp://nope", scope: "private" } })).rejects.toThrow(/http/i);
     });
   });
+
+  test("reads a cq endpoint descriptor when present", async () => {
+    await withTempRepo(async (repo) => {
+      const path = join(repo, ".barry-cache/config.json");
+      await Bun.write(path, JSON.stringify({
+        shared_kb: {
+          contribution: "share_enabled",
+          cq: { url: "https://cq.example.com", api_key_ref: "env:CQ_TOKEN", domains: ["testing"] },
+        },
+      }));
+      const config = await readSharedKbConfig({ repo });
+      expect(config.shared_kb.cq).toEqual({
+        url: "https://cq.example.com",
+        api_key_ref: "env:CQ_TOKEN",
+        domains: ["testing"],
+      });
+    });
+  });
+
+  test("omits cq when the descriptor has no url", async () => {
+    await withTempRepo(async (repo) => {
+      const path = join(repo, ".barry-cache/config.json");
+      await Bun.write(path, JSON.stringify({ shared_kb: { contribution: "local_only", cq: { domains: ["x"] } } }));
+      const config = await readSharedKbConfig({ repo });
+      expect(config.shared_kb.cq).toBeUndefined();
+    });
+  });
+
+  test("setting contribution mode preserves an existing cq descriptor", async () => {
+    await withTempRepo(async (repo) => {
+      const path = join(repo, ".barry-cache/config.json");
+      await Bun.write(path, JSON.stringify({ shared_kb: { contribution: "local_only", cq: { url: "https://cq.example.com" } } }));
+      await writeSharedKbContributionMode({ repo, mode: "share_enabled" });
+      const config = await readSharedKbConfig({ repo });
+      expect(config.shared_kb.contribution).toBe("share_enabled");
+      expect(config.shared_kb.cq?.url).toBe("https://cq.example.com");
+    });
+  });
 });

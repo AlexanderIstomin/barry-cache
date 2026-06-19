@@ -14,10 +14,17 @@ export interface SharedKbBrainConfig {
   trust_policy?: SharedKbBrainTrustPolicy;
 }
 
+export interface SharedKbCqConfig {
+  url: string;
+  api_key_ref?: string;
+  domains?: string[];
+}
+
 export interface SharedKbConfig {
   shared_kb: {
     contribution: SharedKbContributionMode;
     brain?: SharedKbBrainConfig;
+    cq?: SharedKbCqConfig;
   };
 }
 
@@ -34,12 +41,25 @@ export async function readSharedKbConfig(options: { repo: string }): Promise<Sha
   const raw = JSON.parse(await readText(path)) as unknown;
   const contribution = readContributionMode(raw) ?? defaultContribution;
   const brain = readBrainConfig(raw);
-  return { shared_kb: brain ? { contribution, brain } : { contribution } };
+  const cq = readCqConfig(raw);
+  return {
+    shared_kb: {
+      contribution,
+      ...(brain ? { brain } : {}),
+      ...(cq ? { cq } : {}),
+    },
+  };
 }
 
 export async function writeSharedKbContributionMode(options: { repo: string; mode: SharedKbContributionMode }): Promise<SharedKbConfig> {
   const current = await readSharedKbConfig({ repo: options.repo });
-  const next: SharedKbConfig = { shared_kb: { contribution: options.mode, ...(current.shared_kb.brain ? { brain: current.shared_kb.brain } : {}) } };
+  const next: SharedKbConfig = {
+    shared_kb: {
+      contribution: options.mode,
+      ...(current.shared_kb.brain ? { brain: current.shared_kb.brain } : {}),
+      ...(current.shared_kb.cq ? { cq: current.shared_kb.cq } : {}),
+    },
+  };
   await persist(options.repo, next);
   return next;
 }
@@ -85,9 +105,22 @@ function readBrainConfig(raw: unknown): SharedKbBrainConfig | undefined {
   return { url: candidate.url, scope: candidate.scope, ...(trustPolicy ? { trust_policy: trustPolicy } : {}) };
 }
 
-function sharedKbSection(raw: unknown): { contribution?: unknown; brain?: unknown } | undefined {
+function readCqConfig(raw: unknown): SharedKbCqConfig | undefined {
+  const cq = sharedKbSection(raw)?.cq;
+  if (typeof cq !== "object" || cq === null) return undefined;
+  const candidate = cq as { url?: unknown; api_key_ref?: unknown; domains?: unknown };
+  if (typeof candidate.url !== "string" || candidate.url.length === 0) return undefined;
+  const config: SharedKbCqConfig = { url: candidate.url };
+  if (typeof candidate.api_key_ref === "string") config.api_key_ref = candidate.api_key_ref;
+  if (Array.isArray(candidate.domains) && candidate.domains.every((d) => typeof d === "string")) {
+    config.domains = candidate.domains as string[];
+  }
+  return config;
+}
+
+function sharedKbSection(raw: unknown): { contribution?: unknown; brain?: unknown; cq?: unknown } | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const sharedKb = (raw as { shared_kb?: unknown }).shared_kb;
   if (typeof sharedKb !== "object" || sharedKb === null) return undefined;
-  return sharedKb as { contribution?: unknown; brain?: unknown };
+  return sharedKb as { contribution?: unknown; brain?: unknown; cq?: unknown };
 }
