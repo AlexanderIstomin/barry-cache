@@ -54,17 +54,19 @@ describe("initProject", () => {
       expect(agents).toContain('Add or update a `kind: "decision"` fact');
       expect(agents).toContain("Do not create ADRs for routine bug fixes");
 
+      // Non-codex adapters are thin stubs that point at the canonical AGENTS.md.
       const cursor = await readFile(join(repo, ".cursor/rules/barry-cache.mdc"), "utf8");
+      expect(cursor).toContain("Barry Cache");
       expect(cursor).toContain("bun run barry -- resume --task");
-      expect(cursor).toContain("bun run barry -- finalize --status success --summary");
-      expect(cursor).toContain("bun run barry -- failure record --summary");
-      expect(cursor).toContain("Do not claim Barry canonical memory is updated unless `docs/context/` changed.");
-      expect(cursor).toContain("Failure records write operational validation memory only");
-      expect(cursor).toContain("There is no `fact` CLI command;");
-      expect(cursor).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
-      expect(cursor).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
-      expect(cursor).toContain('bun run barry -- adr new --title "<decision>" --tags "<tags>"');
-      expect(cursor).toContain("Do not create ADRs for routine bug fixes");
+      expect(cursor).toContain("`AGENTS.md`");
+      expect(cursor).toContain("<!-- barry-cache:start -->");
+      // The full memory policy now lives only in AGENTS.md, not in every stub.
+      expect(cursor).not.toContain("There is no `fact` CLI command;");
+      expect(cursor).not.toContain("Do not create ADRs for routine bug fixes");
+
+      const claude = await readFile(join(repo, "CLAUDE.md"), "utf8");
+      expect(claude).toContain("`AGENTS.md`");
+      expect(claude).toContain("bun run barry -- resume --task");
 
       const maintenance = await readFile(join(repo, "docs/context/MAINTENANCE.md"), "utf8");
       expect(maintenance).toContain("Save an agent session");

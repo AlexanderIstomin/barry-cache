@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { adrReadmeMd, adrSchema, agentInstructions, applyManagedBlock, conceptOverviewMd, decisionRecordInstructions, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema } from "./templates";
+import { adrReadmeMd, adrSchema, agentInstructions, agentStub, applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema } from "./templates";
 import { exists, readText, repoPath, writeIfChanged, writeText } from "./fs";
 import type { AgentInstructionTarget, InitResult, PackageManagerHint } from "./types";
 
@@ -85,15 +85,27 @@ async function patchAgentInstructions(
   packageManager: PackageManagerHint | undefined,
 ): Promise<void> {
   const selected = new Set(agents ?? allAgentTargets);
-  if (selected.has("codex")) await patchCodexAgents(repo, dryRun, result, commandPrefix, packageManager);
+  // AGENTS.md is the single canonical instruction file; every other instruction
+  // adapter is a thin stub that points back to it, so selecting any of them implies
+  // writing AGENTS.md.
+  const instructionTargets: AgentInstructionTarget[] = ["codex", "cursor", "copilot", "claude", "gemini"];
+  if (instructionTargets.some((target) => selected.has(target))) {
+    await patchCanonicalAgentsFile(repo, dryRun, result, commandPrefix, packageManager);
+  }
   for (const file of adapterFiles) {
     if (!selected.has(file.target)) continue;
-    const content = file.target === "llms" ? llmsTxt() : adapterFile(file.agent, commandPrefix);
-    record(result, await writeIfChanged(repoPath(repo, file.path), content, dryRun), file.path);
+    if (file.target === "llms") {
+      record(result, await writeIfChanged(repoPath(repo, file.path), llmsTxt(), dryRun), file.path);
+      continue;
+    }
+    const path = repoPath(repo, file.path);
+    const existing = (await exists(path)) ? await readText(path) : "";
+    const content = applyManagedBlock(existing, agentStub(commandPrefix));
+    record(result, await writeIfChanged(path, content, dryRun), file.path);
   }
 }
 
-async function patchCodexAgents(
+async function patchCanonicalAgentsFile(
   repo: string,
   dryRun: boolean,
   result: InitResult,
@@ -165,49 +177,6 @@ function packageManagerHint(name: PackageManagerHint["name"]): PackageManagerHin
 
 function barryCommandPrefix(packageManager: PackageManagerHint | undefined): string {
   return packageManager ? `${packageManager.name} run barry --` : "barry-cache";
-}
-
-function adapterFile(agent: string, commandPrefix: string): string {
-  return `# Barry Cache for ${agent}
-
-Canonical context lives in \`docs/context/\`.
-
-Start by running:
-
-\`\`\`bash
-${commandPrefix} resume --task "<task>"
-\`\`\`
-
-Validate context changes with:
-
-\`\`\`bash
-${commandPrefix} validate
-\`\`\`
-
-Before handing off substantial work, record factual evidence:
-
-\`\`\`bash
-${commandPrefix} finalize --status success --summary "<summary>" --files "path-a,path-b"
-\`\`\`
-
-When user validation shows previous work is broken, record the contradiction before or while fixing it:
-
-\`\`\`bash
-${commandPrefix} failure record --summary "<what failed>" --expected "<expected behavior>" --actual "<observed behavior>" --challenges "<handoff-or-fact-id>"
-\`\`\`
-
-Memory policy:
-
-- Finalize writes operational memory only.
-- Failure records write operational validation memory only and should challenge stale handoffs or facts instead of rewriting history.
-- Do not claim Barry canonical memory is updated unless \`docs/context/\` changed.
-- If a task adds durable implementation behavior, add or update source-backed facts in \`docs/context/features/*/FACTS.jsonl\` and run \`${commandPrefix} validate\`.
-- There is no \`fact\` CLI command; update canonical facts by editing \`docs/context/features/*/FACTS.jsonl\` directly, then run \`${commandPrefix} validate\`.
-- Use ISO 8601 timestamps in fact \`updated_at\` values when saving new facts, so same-day feature order is preserved in review timelines.
-- Use collision-resistant fact IDs like \`REV-20260526T160512Z-a8f3\`; dense review UI may display them as \`REV-a8f3\`.
-
-${decisionRecordInstructions(commandPrefix)}
-	`;
 }
 
 function llmsTxt(): string {

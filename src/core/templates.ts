@@ -76,6 +76,20 @@ ${decisionRecordInstructions(commandPrefix)}
 	`;
 }
 
+export function agentStub(commandPrefix = "barry-cache"): string {
+  return `
+## Barry Cache
+
+This repo uses Barry Cache for shared, source-backed project context. The full command set and memory policy live in \`AGENTS.md\` at the repo root — read it before doing non-trivial work.
+
+Start a task with:
+
+\`\`\`bash
+${commandPrefix} resume --task "<task>"
+\`\`\`
+	`;
+}
+
 export function decisionRecordInstructions(commandPrefix = "barry-cache"): string {
   return `Decision records:
 

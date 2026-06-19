@@ -14,3 +14,4 @@
 - `SHARED_KB_OPT_IN_ADR`: docs/context/adrs/ADR-0008-require-explicit-opt-in-for-shared-kb-contribution.md
 - `PKG`: package.json
 - `AGENT`: AGENTS.md
+- `AGENTS_MD_CANONICAL_ADR`: docs/context/adrs/ADR-0012-make-agents-md-the-canonical-agent-instruction-file-with-thin-stubs.md
