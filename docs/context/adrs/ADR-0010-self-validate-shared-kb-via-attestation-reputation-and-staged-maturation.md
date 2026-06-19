@@ -1,7 +1,7 @@
 ---
 id: ADR-0010
 title: Self-validate shared KB via attestation, reputation, and staged maturation
-status: active
+status: superseded
 date: 2026-06-18
 supersedes: []
 tags: [shared-kb, brain, attestation, reputation, maturation]

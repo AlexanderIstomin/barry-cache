@@ -1,7 +1,7 @@
 ---
 id: ADR-0009
 title: Ship self-hostable Brain server for distributed shared KB
-status: active
+status: superseded
 date: 2026-06-18
 supersedes: []
 tags: [shared-kb, brain, self-host, vendor-independence]

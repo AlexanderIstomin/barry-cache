@@ -1,7 +1,7 @@
 ---
 id: ADR-0007
 title: Store shared solutions KB as signed static packs
-status: active
+status: superseded
 date: 2026-06-04
 supersedes: []
 tags: [shared-kb, storage, cloudflare, agents]
