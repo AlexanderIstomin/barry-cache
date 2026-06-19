@@ -173,20 +173,19 @@ place. Nothing remains to extract.
 
 ## Parallel independent tracks (no dependency on 1–4)
 
-### Track A — CLI-first + AGENTS.md adapter collapse
+### Track A — AGENTS.md adapter collapse — ✅ DONE (ADR-0012)
 
-Collapse the 6 generated adapters ([init.ts:21-26](../../../src/core/init.ts)) to **AGENTS.md as the
-canonical managed block** + thin "see AGENTS.md" stubs for the others, dropping each as its vendor
-ships native AGENTS.md support. Add an **optional MCP *client*** so Barry can consume cq's MCP
-server in shell-less hosts. (Rationale: CLI is cheaper/more reliable for agents; the adapter-killer
-is AGENTS.md convergence, not an MCP server — see conversation analysis.) Needs its own ADR + plan.
+`AGENTS.md` is now the canonical managed block; CLAUDE.md/GEMINI.md/copilot/cursor are thin
+managed-block stubs that point to it; `llms.txt` stays an index. The duplicate `adapterFile`
+generator is gone. The **MCP client** sub-part was intentionally skipped (CLI-first; AGENTS.md
+convergence is the adapter-killer, not MCP).
 
-### Track B — memory drift-detection
+### Track B — memory drift-detection — ✅ DONE (ADR-0013)
 
-Extend `validate` with a staleness/provenance-rot report (missing `src` files, facts untouched
-while sources changed, aged `open-question`/`risk`); surface unresolved-`challenge` facts as
-suspect; ship a `validate --strict` CI recipe. Closes the "unmaintained wiki misleads" gap. Needs
-its own plan.
+`validate` reports provenance rot (a fact `src` resolving via IDMAP/path to a missing file) and
+stale `open-question`/`risk` facts (> `staleAfterDays`, default 180) as non-failing warnings;
+`validate --strict` (and `doctor --strict`) gate CI on them. The git-mtime "untouched while
+sources changed" check and the unresolved-`challenge` surfacing remain possible future work.
 
 ---
 
