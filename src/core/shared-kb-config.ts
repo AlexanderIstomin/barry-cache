@@ -30,7 +30,14 @@ export async function readSharedKbConfig(options: { repo: string }): Promise<Sha
   const path = sharedKbConfigPath(options.repo);
   if (!(await exists(path))) return { shared_kb: { contribution: defaultContribution } };
 
-  const raw = JSON.parse(await readText(path)) as unknown;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readText(path));
+  } catch {
+    // A corrupt optional config must not crash finalize or kb commands; fail safe to the
+    // default (local-only, no sharing). Re-run `kb cq login` / `kb sharing set` to restore.
+    return { shared_kb: { contribution: defaultContribution } };
+  }
   const contribution = readContributionMode(raw) ?? defaultContribution;
   const cq = readCqConfig(raw);
   return {

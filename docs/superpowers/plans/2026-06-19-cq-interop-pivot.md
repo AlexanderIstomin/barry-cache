@@ -121,10 +121,15 @@ existing behavior changed. **Risk:** low. **Depends on:** nothing.
 
 **Detailed plan:** `docs/superpowers/plans/2026-06-19-cq-consume-adapter.md`.
 
-### Phase 2 — cq contribute adapter (provenance + signing)
+### Phase 2 — cq contribute adapter (provenance only)
 
-**Goal:** queued Barry proposals map to cq `knowledge_unit` and POST to cq, carrying source
-provenance and an Ed25519 signature; outcome attestations route to cq `confirm`/`flag`.
+> **Update (shipped):** no signing. cq `propose` has no signature field and the local Ed25519
+> keypair was later removed as unused residue (see [ADR-0014](../../context/adrs/ADR-0014-remove-unused-hive-mind-signing-residue-and-simplify-validator-identity.md)).
+> Contributions are plain provenance-annotated lessons; `created_by` is a random validator id.
+> cq has no REST attest endpoint, so `confirm`/`flag` were not built.
+
+**Goal (as planned):** queued Barry proposals map to cq `knowledge_unit` and POST to cq, carrying
+source provenance and an Ed25519 signature; outcome attestations route to cq `confirm`/`flag`.
 
 **Deliverables:**
 - `cq-adapter.ts`: `lessonToCqUnit(lesson, {provenance})`, provenance note builder, request signer.

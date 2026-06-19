@@ -14,6 +14,15 @@ describe("shared KB contribution config", () => {
     });
   });
 
+  test("falls back to local-only (does not throw) on a corrupt config file", async () => {
+    await withTempRepo(async (repo) => {
+      await mkdir(join(repo, ".barry-cache"), { recursive: true });
+      await writeFile(join(repo, ".barry-cache/config.json"), "{ not valid json");
+      const config = await readSharedKbConfig({ repo });
+      expect(config.shared_kb.contribution).toBe("local_only");
+    });
+  });
+
   test("writes the selected contribution mode to repo-local config", async () => {
     await withTempRepo(async (repo) => {
       await writeSharedKbContributionMode({ repo, mode: "preview_only" });

@@ -1,5 +1,7 @@
 # cq Consume Adapter (Phase 1) Implementation Plan
 
+> **Status:** Implemented (historical plan). Records the Phase 1 plan as written; the shipped state is authoritative in the ADRs and `docs/context/features/shared-kb/FACTS.jsonl`. Notably the `brain` config referenced below was later removed (cq-only) — see ADR-0011/ADR-0014.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let Barry read Mozilla cq's shared knowledge — `barry-cache kb search --source cq --query "..."` returns cq knowledge units mapped to Barry search items through a versioned, fixture-tested adapter, with zero change to existing behavior.

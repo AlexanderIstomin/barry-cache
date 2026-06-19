@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
-import { buildLessonProposal, listOutboxLessons, writeProposalToOutbox } from "../src/core/shared-kb-proposal";
+import { access, mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { buildLessonProposal, listOutboxLessons, outboxDir, removeOutboxLesson, writeProposalToOutbox } from "../src/core/shared-kb-proposal";
 import { withTempRepo } from "./helpers";
+
+const fileExists = (p: string) => access(p).then(() => true, () => false);
 
 const input = {
   title: "Treat handoffs as claims until validated",
@@ -52,5 +56,32 @@ test("outbox round-trip: write a proposal then list it", async () => {
 test("listOutboxLessons returns empty when no outbox exists", async () => {
   await withTempRepo(async (repo) => {
     expect(await listOutboxLessons({ repo })).toEqual([]);
+  });
+});
+
+test("listOutboxLessons skips a malformed outbox file instead of throwing", async () => {
+  await withTempRepo(async (repo) => {
+    const lesson = buildLessonProposal(input, { now: "2026-06-18T10:00:00.000Z" });
+    await writeProposalToOutbox({ repo, lesson });
+    await writeFile(join(outboxDir(repo), "broken.json"), "{ not valid json");
+    const listed = await listOutboxLessons({ repo });
+    expect(listed.map((l) => l.id)).toEqual([lesson.id]);
+  });
+});
+
+test("removeOutboxLesson refuses a traversal id and only deletes within the outbox", async () => {
+  await withTempRepo(async (repo) => {
+    const lesson = buildLessonProposal(input, { now: "2026-06-18T10:00:00.000Z" });
+    await writeProposalToOutbox({ repo, lesson });
+    // A sentinel one level above the outbox dir; a crafted "../target" id would target it.
+    const sentinel = join(dirname(outboxDir(repo)), "target.json");
+    await mkdir(dirname(sentinel), { recursive: true });
+    await writeFile(sentinel, "keep");
+
+    await removeOutboxLesson({ repo, id: "../target" });
+    expect(await fileExists(sentinel)).toBe(true); // traversal id is ignored
+
+    await removeOutboxLesson({ repo, id: lesson.id }); // a valid id still works
+    expect((await listOutboxLessons({ repo })).length).toBe(0);
   });
 });

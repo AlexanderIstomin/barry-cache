@@ -1,5 +1,7 @@
 # cq Contribute Adapter (Phase 2) Implementation Plan
 
+> **Status:** Implemented (historical plan). This plan already scopes the cq path as unsigned (no signature field); the local Ed25519 keypair was later removed entirely — see ADR-0014. Shipped state is authoritative in the ADRs and `docs/context/features/shared-kb/FACTS.jsonl`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** Contribute queued Barry lessons to cq — `barry-cache kb contribute` maps each outbox lesson to cq's `propose.json` shape and POSTs it to `POST /api/v1/knowledge`, embedding provenance as prose, gated on `share-enabled`.

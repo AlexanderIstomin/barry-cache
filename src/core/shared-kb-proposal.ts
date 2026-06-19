@@ -49,6 +49,9 @@ export async function writeProposalToOutbox(opts: { repo: string; lesson: Shared
 }
 
 export async function removeOutboxLesson(opts: { repo: string; id: string }): Promise<void> {
+  // The id comes from outbox file content (untrusted), and this is a force-delete: never let a
+  // crafted id with path separators or ".." escape the outbox directory.
+  if (!/^[A-Za-z0-9._-]+$/.test(opts.id) || opts.id.includes("..")) return;
   await rm(repoPath(outboxDir(opts.repo), `${opts.id}.json`), { force: true });
 }
 
@@ -62,7 +65,11 @@ export async function listOutboxLessons(opts: { repo: string }): Promise<SharedK
   }
   const lessons: SharedKbLesson[] = [];
   for (const file of files) {
-    lessons.push(JSON.parse(await readText(repoPath(outboxDir(opts.repo), file))) as SharedKbLesson);
+    try {
+      lessons.push(JSON.parse(await readText(repoPath(outboxDir(opts.repo), file))) as SharedKbLesson);
+    } catch {
+      // Skip a malformed outbox file rather than blocking every other queued lesson at contribute.
+    }
   }
   return lessons;
 }
