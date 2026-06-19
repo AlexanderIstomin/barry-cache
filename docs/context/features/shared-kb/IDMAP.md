@@ -38,6 +38,8 @@
 - `SELF_VALIDATION_ADR`: docs/context/adrs/ADR-0010-self-validate-shared-kb-via-attestation-reputation-and-staged-maturation.md
 - `CQ_INTEROP_ADR`: docs/context/adrs/ADR-0011-interoperate-with-cq-and-retire-the-standalone-global-hive-mind.md
 - `CQ_PIVOT_ROADMAP`: docs/superpowers/plans/2026-06-19-cq-interop-pivot.md
+- `CQ_ADAPTER`: src/core/cq-adapter.ts
+- `CQ_ADAPTER_TEST`: tests/cq-adapter.test.ts
 - `SHARED_KB_INTAKE_TEST`: tests/shared-kb-intake.test.ts
 - `SHARED_KB_PROPOSAL_TEST`: tests/shared-kb-proposal.test.ts
 - `SHARED_KB_BRAIN_CLIENT_TEST`: tests/shared-kb-brain-client.test.ts
