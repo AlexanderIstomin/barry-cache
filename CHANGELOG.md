@@ -1,21 +1,24 @@
 # Changelog
 
+## 2026-06-19
+
+### Init Bootstrap
+- barry-cache validate reports context drift as non-failing warnings: provenance rot (a fact src resolved via IDMAP token or path points to a missing file) and stale open-question/risk facts older than staleAfterDays (default 180), with validate --strict (and doctor --strict) turning warnings into a non-zero exit for CI; validateProject takes injectable now and staleAfterDays
+
+### Shared KB
+- cq endpoint descriptor is stored in .barry-cache/config.json as shared_kb.cq with url, optional api_key_ref (env:NAME), and optional domains, and is preserved when the contribution mode is rewritten
+- barry-cache kb contribute posts each queued outbox lesson to cq POST /api/v1/knowledge as a propose request (domains<-tags, insight summary/detail/action, provenance prose appended to detail, created_by=validator id, context.pattern from applies/avoid_when), gated on share-enabled, with --dry-run; cq propose carries no signature or evidence so signing stays local
+- barry-cache kb cq login stores the cq API key in a git-ignored owner-only .barry-cache/cq-credentials.json (separate from config.json), records the cq endpoint (default https://api.cq.exchange — the hosted REST API; cq.exchange itself is the web UI — with --url to override), and enables share-enabled; the key is read from --api-key, CQ_API_KEY, or stdin; resolution prefers an api_key_ref env over the stored key; kb cq logout removes the key and sets local-only
+- barry-cache kb search --source cq queries a configured cq endpoint via GET /api/v1/knowledge through a versioned adapter (CQ_SCHEMA_VERSION), sending a required domains filter (--domains or shared_kb.cq.domains) as the cq query parameter, then mapping cq knowledge_units to Barry search items and scoring them by the free-text query locally; rejects a query with no searchable term (no word of 3+ characters) so it never silently returns the whole domain; gated on share-enabled mode and erroring clearly on a non-JSON response
+
+
 ## 2026-06-18
 
 ### Shared KB
-- Barry Brain core is built on a portable Web Fetch API handler plus a BrainStore persistence interface so the same code can run on multiple runtimes and storage backends
-- Brain v1 ships as a single Docker container backed by bun:sqlite with no external services and no new runtime dependencies
-- Each Brain signs snapshots with its own Ed25519 keypair whose public-key fingerprint clients pin to verify snapshot signatures end-to-end without a central authority
-- Brain conformance suite verifies that any deployment satisfies the vendor-neutral Brain contract via the barry-brain conformance command
-- Shared KB intake batches are signed with a recursive stable-stringify canonical payload so the Ed25519 signature binds the full lesson and attestation contents; the same module is shared by the client and the Brain to prevent drift
-- Barry shared KB client contributes via a local Ed25519 validator identity in .barry-cache/shared-kb/identity.json, anonymized lesson proposals queued to a repo-local outbox, and a signed intake batch POSTed to a Brain /v1/intake endpoint
-- barry-cache kb propose and kb submit gate proposal creation on preview-only or share-enabled mode and submission to a Brain on share-enabled mode, reading the target from --brain or shared_kb.brain.url
-- Shared KB brain descriptor is stored in .barry-cache/config.json as shared_kb.brain with url, scope (private or global), and optional trust_policy so a repo points Barry at a chosen Brain
+- barry-cache kb propose gates lesson proposal creation on preview-only or share-enabled mode, queuing the validated lesson to the repo-local outbox for later contribution
 - Shared KB harvest is gated on preview-only or share-enabled mode, and a successful finalize nudges the agent to run kb harvest only when sharing is enabled
-- Shared KB attestations are signed outcome records (confirmed/contradicted/not_applicable x observed_success/observed_failure/static_review) that the Brain binds to their signing key by deriving validator_id and rejecting mismatches, so reputation cannot be stolen or fabricated
-- Shared KB reputation computes lesson scores as a sigmoid of signed, evidence-weighted (observed_failure>observed_success>static_review), copied-evidence-discounted attestation contributions, and validator reputation as agreement with the resulting scores in a single pass
-- Shared KB staged maturation promotes and demotes reviewed lessons to trusted only with enough independent confirmations across diverse contexts, a positive score, and a minimum observation window, and demotes to challenged on a credible observed_failure that drives the score net-negative; terminal statuses are never auto-changed
-- barry-cache kb attest sends a signed outcome attestation for a consumed lesson to a Brain /v1/attest endpoint, gated on share-enabled mode (attestation-on-use)
+- barry-cache kb harvest --source context bootstrap-harvests the existing context backlog (active decision facts, active ADRs, recorded validation failures) into sanitization candidates, excluding implemented/test facts, superseded records, and src file pointers, then flows through the agent-in-the-loop propose path
+- barry-cache kb propose supports the lesson, anti_pattern, and decision_pattern kinds via --kind so harvested decisions and failures keep their taxonomy
 
 
 ## 2026-06-04
@@ -24,9 +27,7 @@
 - barry-cache init adds to managed gitignore .barry-cache/ so repo-local Barry user config such as shared KB contribution mode is not committed
 
 ### Shared KB
-- Shared KB snapshots generate manifest, manifest signature, lesson JSONL, revocation JSONL, and search index files for vendor-neutral static snapshot distribution to any static host or a Brain's /v1/snapshot endpoint
-- Shared KB search defaults to trusted lessons while allowing reviewed lessons only through an explicit include-reviewed option
-- Shared KB validation rejects revealing file paths, email addresses, secret-looking tokens, malformed records, and duplicate lesson IDs before publication
+- Shared KB lesson validation rejects revealing file paths, email addresses, and secret-looking tokens in lesson text, so a lesson is sanitized before it is queued to the outbox or contributed to cq
 - Shared KB contribution mode is stored in .barry-cache/config.json as repo-local user config with local_only, preview_only, or share_enabled values
 - barry-cache kb sharing manages shared KB contribution status and set commands using local-only, preview-only, and share-enabled CLI mode names
 
