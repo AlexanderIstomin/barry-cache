@@ -18,4 +18,4 @@ kb-search-cq consumes cq-knowledge-via-rest
 kb-contribute posts provenance-annotated-lessons-to-cq
 kb-contribute gated-on share-enabled
 cq-path carries-no signature-or-rich-attestation
-signing retained-for local-outbox-integrity
+validator-identity used-as cq-created-by-attribution

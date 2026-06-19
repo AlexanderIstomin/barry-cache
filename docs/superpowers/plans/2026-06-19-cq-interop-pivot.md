@@ -6,9 +6,14 @@
 > `docs/superpowers/plans/2026-06-19-cq-consume-adapter.md`.
 
 **North star:** Barry becomes *"the best local/org source-backed memory layer, and the
-highest-quality signed, provenance-carrying contributor to the emerging open commons (cq)."*
-We interoperate with Mozilla's `cq` instead of running a rival global commons, keep four
-differentiated advantages, and move the trust-validation research to a separate repo.
+highest-quality provenance-carrying contributor to the emerging open commons (cq)."*
+We interoperate with Mozilla's `cq` instead of running a rival global commons and keep four
+differentiated advantages.
+
+> **Update:** local Ed25519 signing was later dropped as unused residue (see
+> [ADR-0014](../../context/adrs/ADR-0014-remove-unused-hive-mind-signing-residue-and-simplify-validator-identity.md)),
+> and the standalone trust-validation research repo was cancelled rather than spun out (see ADR-0011).
+> Contributions are plain provenance-annotated lessons; the validator identity is a random `created_by` id.
 
 **Supersedes:** ADR-0007, ADR-0009, ADR-0010; hive-mind spec sub-projects SP3 (global Brain
 intake) and SP4 (global self-validation). Privacy opt-in (ADR-0008) is unchanged.
@@ -80,7 +85,7 @@ DROP = deleted outright (no research repo — owner dropped the hive-mind entire
 | `src/core/shared-kb.ts` lesson types + validation + **redaction** | **KEEP** | — |
 | `src/core/shared-kb.ts` snapshot build (`buildSharedKbSnapshot*`, manifest sign) | **DROP** | 3 |
 | `src/core/shared-kb-proposal.ts` (proposal/outbox) | **KEEP** (output mapped to cq) | 2 |
-| `src/core/shared-kb-identity.ts` + `shared-kb-intake.ts` (Ed25519 sign, stable-stringify) | **KEEP** — signed contributor | 2 |
+| `src/core/shared-kb-identity.ts` + `shared-kb-intake.ts` (stable-stringify; Ed25519 since removed) | **KEEP** identity (random `created_by` id) — signing dropped, see ADR-0014 | 2 |
 | `src/core/shared-kb-attestation.ts` (signed outcomes) | **ADAPT** → cq `confirm`/`flag` | 2 |
 | `src/core/shared-kb-config.ts` (brain descriptor) | **ADAPT** → cq endpoint descriptor | 1 |
 | `src/core/shared-kb-brain-client.ts` (Brain HTTP client) | **ADAPT** → cq client (or replace) | 1–2 |

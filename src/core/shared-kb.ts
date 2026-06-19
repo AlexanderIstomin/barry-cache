@@ -95,7 +95,10 @@ export function tokens(input: string): string[] {
 }
 
 export function scoreText(text: string, queryTokens: string[]): number {
-  return queryTokens.reduce((score, token) => score + (text.includes(token) ? 1 : 0), 0);
+  // tokens() lowercases query tokens, so normalize the haystack too (matches context.ts
+  // scoring) — otherwise a non-lowercased caller would silently mis-score.
+  const haystack = text.toLowerCase();
+  return queryTokens.reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0);
 }
 
 function validateEvidence(value: unknown): string[] {

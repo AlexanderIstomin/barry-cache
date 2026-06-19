@@ -58,4 +58,8 @@ describe("tokens / scoreText", () => {
     expect(scoreText("ci flaky tests pass", tokens("flaky tests"))).toBe(2);
     expect(scoreText("unrelated content", tokens("flaky tests"))).toBe(0);
   });
+
+  test("scoring is case-insensitive on the haystack", () => {
+    expect(scoreText("CI Flaky TESTS pass", tokens("flaky tests"))).toBe(2);
+  });
 });
