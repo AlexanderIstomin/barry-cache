@@ -18,31 +18,54 @@ intake) and SP4 (global self-validation). Privacy opt-in (ADR-0008) is unchanged
 ## cq integration surface (the contract we target)
 
 Pin everything below behind a versioned adapter (`CQ_SCHEMA_VERSION`); never couple core to cq.
+**Authoritative source = cq's published JSON Schemas** (`schema/*.json`), NOT the architecture-doc
+prose (they diverge — the prose lists fields like `domain`/`kind`/`status`/`confidence`/
+`proposer_did` that do not exist in the schema).
 
-- **REST:** `GET /api/v1/knowledge?domains=<domain>` → `KnowledgeUnitList`; `POST /api/v1/knowledge`
-  (proposes; flagged for human review); `GET /api/v1/users/me/api-keys`. Responses are
-  `data`-rooted; unpaginated = `FooList`, cursor-paginated = `FooPage` with opaque `next_cursor`.
-- **MCP tools (alt transport):** `query`, `propose`, `confirm`, `flag`, `reflect`, `status`.
-- **`knowledge_unit` schema (fields we map to):** `id`, `version`, `domain[]`,
-  `insight{summary,detail,action}`, `language`, `frameworks`, `environment`, `pattern`,
-  `severity`, `confidence` (0–1), `confirmations`, `contributing_orgs`, `proposer_did`,
-  `graduation_history[]`, `status`, `kind` (`pitfall`|`workaround`|`tool-recommendation`),
-  `staleness_policy`, `superseded_by`, `related`.
+- **REST:** `GET /api/v1/knowledge?domains=<csv>` → `data`-rooted list (`next_cursor` when paged);
+  `POST /api/v1/knowledge` per `propose.json` (single object, flagged for human review);
+  confirm per `confirm.json`. **MCP tools (alt transport):** `query`, `propose`, `confirm`,
+  `flag`, `reflect`, `status`.
+- **`knowledge_unit.json`** — required `[id, domains, insight]`. Fields: `id` (`ku_[0-9a-f]{32}`),
+  `version`, `domains: string[]`, `insight{summary,detail,action}` (all required),
+  `context{languages[],frameworks[],pattern}`, `evidence{confidence 0–1, confirmations,
+  first_observed, last_confirmed}`, `tier` (`local`|`private`|`public`), `created_by`,
+  `superseded_by`, `flags[]` (`reason`: stale|incorrect|duplicate). **No `kind`/`status`/`severity`.**
+- **`propose.json`** (contribute) — required `[domains, insight]`; allowed: `domains`, `insight`,
+  `context`, `created_by`. **No id (server-assigned), no evidence, no signature, no batch.**
+- **`confirm.json`** (attest) — `{ unit_id }` only, `additionalProperties: false`. Negative
+  signal = `flag` (`reason`).
 
-### Barry lesson ⇄ cq knowledge_unit mapping (canonical, used by every phase)
+### Barry lesson ⇄ cq mapping (canonical, used by every phase)
 
-| Barry `SharedKbLesson` | cq `knowledge_unit` |
+Consume (`knowledge_unit` → Barry search item):
+
+| cq field | Barry search item |
+|---|---|
+| `insight.summary` | `title` |
+| `insight.detail` + `insight.action` | `summary` |
+| `domains[]` | `tags` |
+| `evidence.confidence` (0–1) | `confidence` band (≥.66 high / ≥.33 med / low) |
+| `evidence.confidence` ≥ .6, else; `flags[]` non-empty | `status` trusted / reviewed / challenged |
+| `evidence.last_confirmed` ?? `first_observed` | `updated_at` |
+| (no cq `kind`) | `kind` = `lesson` |
+
+Contribute (Barry lesson → `propose.json`):
+
+| Barry `SharedKbLesson` | cq propose |
 |---|---|
 | `title` | `insight.summary` |
-| `problem` (+ `why`) | `insight.detail` |
+| `problem` + `why` + **provenance note** | `insight.detail` (only schema-legal home for provenance) |
 | `recommendation` | `insight.action` |
-| `tags` | `domain[]` |
-| `applies_when` / `avoid_when` | `environment` / `pattern` (context) |
-| `kind`: `anti_pattern` / `lesson` / `decision_pattern` | `kind`: `pitfall` / `workaround` / `tool-recommendation` |
-| `confidence`: `low`/`medium`/`high` | `confidence`: `0.3`/`0.5`/`0.7` |
-| `evidence` + **source provenance** | attached as a provenance note in `insight.detail` (advantage #1; cq has no native provenance field) |
-| `supersedes` | `superseded_by` (inverse) |
-| `status` | `status` |
+| `tags` | `domains[]` |
+| `applies_when`/`avoid_when` → `context.pattern`; languages/frameworks if known | `context` |
+| validator id / repo handle | `created_by` |
+
+**Limitations forced by the schema (see Phase 2):** cq propose has **no field for an Ed25519
+signature or structured provenance/evidence**, and `confirm` is `unit_id`-only. So signing and
+rich attestation (confidence/context/evidence_type/contradiction-with-detail) **cannot be carried
+to vanilla cq** — they survive only locally or against a Barry-aware brain. Provenance degrades to
+prose-in-`detail` + `created_by`.
 
 ---
 

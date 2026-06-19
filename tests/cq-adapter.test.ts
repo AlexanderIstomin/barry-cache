@@ -25,32 +25,33 @@ describe("parseKnowledgeUnitList", () => {
 });
 
 describe("cqUnitToSearchItem", () => {
-  test("maps insight, kind, confidence band, and status", () => {
+  test("maps insight, domains, evidence confidence, context, and status from authoritative cq fields", () => {
     const item = cqUnitToSearchItem({
       id: "ku_42",
-      kind: "pitfall",
-      confidence: 0.7,
-      domain: ["testing", "ci"],
+      domains: ["testing", "ci"],
       insight: { summary: "Flaky retries", detail: "Tests retry under load", action: "Pin the seed" },
-      last_confirmed: "2026-06-01T00:00:00.000Z",
+      context: { languages: ["typescript"], frameworks: ["bun"], pattern: "retry" },
+      evidence: { confidence: 0.7, last_confirmed: "2026-06-01T00:00:00.000Z" },
     });
     expect(item.id).toBe("ku_42");
-    expect(item.kind).toBe("anti_pattern"); // pitfall -> anti_pattern
-    expect(item.status).toBe("trusted"); // confidence >= 0.6
+    expect(item.kind).toBe("lesson"); // cq has no kind taxonomy
+    expect(item.status).toBe("trusted"); // evidence.confidence >= 0.6
     expect(item.confidence).toBe("high"); // >= 0.66
     expect(item.title).toBe("Flaky retries");
     expect(item.summary).toBe("Tests retry under load Pin the seed");
     expect(item.tags).toEqual(["testing", "ci"]);
     expect(item.updated_at).toBe("2026-06-01T00:00:00.000Z");
-    expect(item.text).toContain("flaky retries");
+    expect(item.text).toContain("typescript");
   });
 
-  test("defaults unknown kind to lesson and low confidence to reviewed/low", () => {
-    const item = cqUnitToSearchItem({ id: "ku_1", confidence: 0.1, insight: { summary: "s" } });
-    expect(item.kind).toBe("lesson");
-    expect(item.status).toBe("reviewed");
-    expect(item.confidence).toBe("low");
-    expect(item.title).toBe("s");
+  test("low evidence confidence maps to reviewed/low; flags map to challenged", () => {
+    const reviewed = cqUnitToSearchItem({ id: "ku_1", domains: ["x"], insight: { summary: "s" }, evidence: { confidence: 0.1 } });
+    expect(reviewed.status).toBe("reviewed");
+    expect(reviewed.confidence).toBe("low");
+    expect(reviewed.title).toBe("s");
+
+    const flagged = cqUnitToSearchItem({ id: "ku_2", domains: ["x"], insight: { summary: "s" }, evidence: { confidence: 0.9 }, flags: [{ reason: "stale" }] });
+    expect(flagged.status).toBe("challenged");
   });
 });
 
@@ -67,8 +68,8 @@ describe("cqSearch", () => {
     const captured: { url?: string; auth?: string | null } = {};
     const body = {
       data: [
-        { id: "ku_hit", confidence: 0.8, insight: { summary: "retry storms", detail: "ci flaky tests", action: "pin" } },
-        { id: "ku_miss", confidence: 0.9, insight: { summary: "unrelated", detail: "database", action: "index" } },
+        { id: "ku_hit", domains: ["ci"], evidence: { confidence: 0.8 }, insight: { summary: "retry storms", detail: "ci flaky tests", action: "pin" } },
+        { id: "ku_miss", domains: ["db"], evidence: { confidence: 0.9 }, insight: { summary: "unrelated", detail: "database", action: "index" } },
       ],
     };
     const result = await cqSearch({

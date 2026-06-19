@@ -368,7 +368,7 @@ describe("kb search --source cq", () => {
       const server = Bun.serve({
         port: 0,
         fetch: () => new Response(JSON.stringify({
-          data: [{ id: "ku_x", confidence: 0.8, insight: { summary: "flaky ci", detail: "tests flake", action: "retry" } }],
+          data: [{ id: "ku_x", domains: ["ci"], evidence: { confidence: 0.8 }, insight: { summary: "flaky ci", detail: "tests flake", action: "retry" } }],
         }), { status: 200 }),
       });
       try {
