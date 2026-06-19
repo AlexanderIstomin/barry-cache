@@ -80,6 +80,16 @@ describe("kb cli", () => {
     });
   });
 
+  test("kb propose rejects empty tags early with a usage hint", async () => {
+    await withTempRepo(async (repo) => {
+      await runCli(repo, ["kb", "sharing", "set", "preview-only"]);
+      const args = proposeArgs.map((a) => (a === "agents,validation" ? "," : a));
+      const result = await runCli(repo, args);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("--tags needs at least one");
+    });
+  });
+
   test("kb propose --dry-run prints the lesson without queuing it", async () => {
     await withTempRepo(async (repo) => {
       await runCli(repo, ["kb", "sharing", "set", "preview-only"]);

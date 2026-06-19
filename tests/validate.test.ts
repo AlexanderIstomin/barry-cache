@@ -61,6 +61,16 @@ describe("validate drift detection", () => {
     });
   });
 
+  test("warns when a src resolves outside the repo instead of silently statting it", async () => {
+    await withTempRepo(async (repo) => {
+      await scaffold(repo);
+      await writeFeature(repo, "demo", [fact({ src: ["../escape.ts"] })]);
+      const result = await validateProject({ repo, now: NOW });
+      expect(result.warnings.some((w) => w.message.includes("outside the repo") && w.message.includes("../escape.ts"))).toBe(true);
+      expect(result.warnings.some((w) => w.message.includes("missing source file"))).toBe(false);
+    });
+  });
+
   test("resolves indented and '=' separated IDMAP entries for drift, matching validateIdMap", async () => {
     await withTempRepo(async (repo) => {
       await scaffold(repo);

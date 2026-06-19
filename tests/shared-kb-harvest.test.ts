@@ -49,6 +49,15 @@ test("readLatestHarvestSources returns empty when there is no operational memory
   });
 });
 
+test("buildHarvestCandidate single-quotes the propose command so pasted text cannot shell-expand", () => {
+  const candidate = buildHarvestCandidate({ kind: "success", summary: "use $(whoami) and don't trust `id`" });
+  // Shell metacharacters survive verbatim inside single quotes (no $()/backtick/$VAR expansion) ...
+  expect(candidate.proposeCommand).toContain("$(whoami)");
+  expect(candidate.proposeCommand).not.toContain('"');
+  // ... and an embedded single quote is escaped with the POSIX '\'' idiom.
+  expect(candidate.proposeCommand).toContain("don'\\''t");
+});
+
 test("buildHarvestCandidate for a decision suggests the decision_pattern kind", () => {
   const candidate = buildHarvestCandidate({ kind: "decision", summary: "Bind signatures to the full payload via recursive stable stringify" });
   expect(candidate.draft.kind).toBe("decision_pattern");

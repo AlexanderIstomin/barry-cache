@@ -153,7 +153,9 @@ function draftForSource(source: HarvestSource, tags: string[]): HarvestDraft {
 }
 
 function renderProposeCommand(draft: HarvestDraft): string {
-  const q = (value: string) => `"${value.replaceAll('"', "'")}"`;
+  // Single-quote so the suggested command is safe to paste as-is: no $(...), backtick,
+  // or $VAR expansion. Embedded single quotes are escaped with the POSIX '\'' idiom.
+  const q = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
   return [
     "barry-cache kb propose lesson",
     `--kind ${draft.kind}`,

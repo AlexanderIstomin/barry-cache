@@ -547,15 +547,25 @@ async function handleKbProposeCommand(parsed: ParsedArgs, repo: string, json: bo
   }
   const confidence = optionalChoice(parsed, "confidence", sharedKbConfidences, "medium", commandUsage("kb propose"));
   const lessonKind = optionalChoice(parsed, "kind", sharedKbKinds, "lesson", commandUsage("kb propose"));
+  const listArgs = {
+    "applies-when": splitCsv(requiredString(parsed, "applies-when", commandUsage("kb propose"))),
+    "avoid-when": splitCsv(requiredString(parsed, "avoid-when", commandUsage("kb propose"))),
+    tags: splitCsv(requiredString(parsed, "tags", commandUsage("kb propose"))),
+  } as const;
+  for (const [flag, values] of Object.entries(listArgs)) {
+    if (values.length === 0) {
+      throw new CliArgumentError(`--${flag} needs at least one comma-separated value`, { usage: commandUsage("kb propose") });
+    }
+  }
   const lesson = buildLessonProposal(
     {
       title: requiredString(parsed, "title", commandUsage("kb propose")),
       problem: requiredString(parsed, "problem", commandUsage("kb propose")),
-      applies_when: splitCsv(requiredString(parsed, "applies-when", commandUsage("kb propose"))),
+      applies_when: listArgs["applies-when"],
       recommendation: requiredString(parsed, "recommendation", commandUsage("kb propose")),
       why: requiredString(parsed, "why", commandUsage("kb propose")),
-      avoid_when: splitCsv(requiredString(parsed, "avoid-when", commandUsage("kb propose"))),
-      tags: splitCsv(requiredString(parsed, "tags", commandUsage("kb propose"))),
+      avoid_when: listArgs["avoid-when"],
+      tags: listArgs.tags,
       confidence: confidence as SharedKbConfidence,
     },
     { now: new Date().toISOString(), kind: lessonKind },

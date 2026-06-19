@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { adrMatchesSource, looksLikeAdrSource, readAdrCatalog } from "./adr";
 import { listDirs, rel, repoPath, readTextIfExists, exists } from "./fs";
 import type { CommandIssue, FactRecord, ValidationResult } from "./types";
@@ -74,9 +74,15 @@ export async function validateProject({ repo, now = new Date(), staleAfterDays =
         // Drift / provenance-rot: resolve IDMAP tokens (or treat path-like sources as paths)
         // and warn when the referenced file no longer exists.
         const resolved = idmap.get(source) ?? (source.includes("/") ? source : undefined);
-        if (resolved && !(await exists(repoPath(repo, resolved)))) {
+        if (resolved) {
           const label = idmap.has(source) ? `${resolved} (${source})` : resolved;
-          warnings.push({ file: rel(repo, factsPath), line, message: `fact references missing source file: ${label}` });
+          if (escapesRepo(repo, resolved)) {
+            // Provenance must live inside the repo; never stat (and implicitly trust) a path
+            // that "../" or an absolute prefix resolves outside the repository root.
+            warnings.push({ file: rel(repo, factsPath), line, message: `fact references source outside the repo: ${label}` });
+          } else if (!(await exists(repoPath(repo, resolved)))) {
+            warnings.push({ file: rel(repo, factsPath), line, message: `fact references missing source file: ${label}` });
+          }
         }
       }
       // Drift / staleness: aged open questions and risks need a human to revisit.
@@ -102,6 +108,11 @@ async function readIdmapTokens(path: string): Promise<Map<string, string>> {
     if (match && match[1] && match[2]) tokens.set(match[1], match[2].trim());
   }
   return tokens;
+}
+
+function escapesRepo(repo: string, relativeOrAbsolute: string): boolean {
+  const rel = relative(repo, resolve(repo, relativeOrAbsolute));
+  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
 }
 
 function factAgeDays(updatedAt: string, now: Date): number | null {

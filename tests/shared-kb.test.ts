@@ -35,6 +35,12 @@ describe("validateSharedKbLesson", () => {
     expect(validateSharedKbLesson(validLesson({ kind: "made_up" as SharedKbLesson["kind"] }))).toContain("invalid field: kind");
   });
 
+  test("rejects empty applies_when, avoid_when, or tags (cq requires at least one domain)", () => {
+    expect(validateSharedKbLesson(validLesson({ tags: [] }))).toContain("invalid field: tags");
+    expect(validateSharedKbLesson(validLesson({ applies_when: [] }))).toContain("invalid field: applies_when");
+    expect(validateSharedKbLesson(validLesson({ avoid_when: [] }))).toContain("invalid field: avoid_when");
+  });
+
   test("flags revealing file paths, emails, secrets, and non-example URLs", () => {
     expect(validateSharedKbLesson(validLesson({ problem: "see src/core/secret.ts" }))).toContain("field problem contains revealing file path: src/core/secret.ts");
     expect(validateSharedKbLesson(validLesson({ why: "ping me at dev@acme.com" }))).toContain("field why contains email address");

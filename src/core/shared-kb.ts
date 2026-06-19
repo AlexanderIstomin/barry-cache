@@ -79,7 +79,7 @@ export function validateSharedKbLesson(value: unknown): string[] {
   }
   for (const field of ["applies_when", "avoid_when", "tags"] as const) {
     const fieldValue = lesson[field];
-    if (fieldValue !== undefined && (!Array.isArray(fieldValue) || fieldValue.some((item) => !isNonEmptyString(item)))) {
+    if (fieldValue !== undefined && (!Array.isArray(fieldValue) || fieldValue.length === 0 || fieldValue.some((item) => !isNonEmptyString(item)))) {
       errors.push(`invalid field: ${field}`);
     }
   }
