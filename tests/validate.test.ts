@@ -92,6 +92,25 @@ describe("validate drift detection", () => {
     });
   });
 
+  test("resolves a code-span (backtick-wrapped) IDMAP path so an existing target does not warn", async () => {
+    await withTempRepo(async (repo) => {
+      await scaffold(repo);
+      // Markdown convention used by real feature packs: the path is itself a code span.
+      await writeFeature(repo, "demo", [fact({ src: ["OK"] })], "- `OK` = `docs/context/README.md`\n");
+      const result = await validateProject({ repo, now: NOW });
+      expect(result.warnings.some((w) => w.message.includes("missing source file"))).toBe(false);
+    });
+  });
+
+  test("takes the first code span as the path when an IDMAP value carries trailing prose", async () => {
+    await withTempRepo(async (repo) => {
+      await scaffold(repo);
+      await writeFeature(repo, "demo", [fact({ src: ["GONE"] })], "- `GONE` = `src/core/gone.ts` (renderer entry; seed file)\n");
+      const result = await validateProject({ repo, now: NOW });
+      expect(result.warnings.some((w) => w.message.includes("missing source file") && w.message.includes("src/core/gone.ts"))).toBe(true);
+    });
+  });
+
   test("warns about an aged open-question/risk fact but not a recent one", async () => {
     await withTempRepo(async (repo) => {
       await scaffold(repo);
