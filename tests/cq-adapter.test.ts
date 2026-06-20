@@ -115,7 +115,7 @@ describe("cqSearch", () => {
     expect(result.results.map((r) => r.id)).toEqual(["ku_high", "ku_low"]);
   });
 
-  test("passes domains as a query parameter", async () => {
+  test("passes domains as repeated query parameters", async () => {
     const captured: { url?: string; auth?: string | null } = {};
     await cqSearch({
       endpoint: "https://cq.example.com/",
@@ -123,7 +123,7 @@ describe("cqSearch", () => {
       domains: ["testing", "ci"],
       fetchImpl: fakeFetch({ data: [] }, captured),
     });
-    expect(captured.url).toBe("https://cq.example.com/api/v1/knowledge?domains=testing%2Cci");
+    expect(captured.url).toBe("https://cq.example.com/api/v1/knowledge?domains=testing&domains=ci");
     expect(captured.auth).toBeNull();
   });
 
@@ -150,8 +150,9 @@ describe("lessonToCqProposal", () => {
     expect(req.insight.action).toBe("Validate claims before treating them as durable context.");
     expect(req.insight.detail).toContain("Agents trust stale handoff summaries.");
     expect(req.insight.detail).toContain("Source: Barry Cache lesson lesson-20260619-abcd1234");
-    expect(req.context?.pattern).toContain("applies when: multi-agent workflow");
-    expect(req.context?.pattern).toContain("avoid when: the source cannot be anonymized");
+    expect(req.insight.detail).toContain("Applies when: multi-agent workflow.");
+    expect(req.insight.detail).toContain("Avoid when: the source cannot be anonymized.");
+    expect(req.context).toBeUndefined();
     expect(req.created_by).toBe("validator-xyz");
   });
 

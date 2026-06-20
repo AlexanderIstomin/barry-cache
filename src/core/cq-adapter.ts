@@ -123,9 +123,9 @@ export async function cqSearch(options: {
   fetchImpl?: typeof fetch;
 }): Promise<SharedKbSearchResult> {
   const base = options.endpoint.replace(/\/+$/, "");
-  const suffix = options.domains && options.domains.length > 0
-    ? `?domains=${encodeURIComponent(options.domains.join(","))}`
-    : "";
+  const params = new URLSearchParams();
+  for (const domain of options.domains ?? []) params.append("domains", domain);
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
   const url = `${base}/api/v1/knowledge${suffix}`;
   const headers: Record<string, string> = { accept: "application/json" };
   if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`;
@@ -165,15 +165,15 @@ export function lessonToCqProposal(lesson: SharedKbLesson, opts: { createdBy?: s
   if (!lesson.tags || lesson.tags.length === 0) {
     throw new Error("cq propose requires at least one domain; lesson has no tags");
   }
-  const detail = [lesson.problem, lesson.why, buildProvenanceNote(lesson)].filter(Boolean).join("\n\n");
-  const patternParts: string[] = [];
-  if (lesson.applies_when.length > 0) patternParts.push(`applies when: ${lesson.applies_when.join("; ")}`);
-  if (lesson.avoid_when.length > 0) patternParts.push(`avoid when: ${lesson.avoid_when.join("; ")}`);
+  const detailParts = [lesson.problem, lesson.why];
+  if (lesson.applies_when.length > 0) detailParts.push(`Applies when: ${lesson.applies_when.join("; ")}.`);
+  if (lesson.avoid_when.length > 0) detailParts.push(`Avoid when: ${lesson.avoid_when.join("; ")}.`);
+  detailParts.push(buildProvenanceNote(lesson));
+  const detail = detailParts.filter(Boolean).join("\n\n");
   const request: CqProposeRequest = {
     domains: lesson.tags,
     insight: { summary: lesson.title, detail, action: lesson.recommendation },
   };
-  if (patternParts.length > 0) request.context = { pattern: patternParts.join(" | ") };
   if (opts.createdBy) request.created_by = opts.createdBy;
   return request;
 }
