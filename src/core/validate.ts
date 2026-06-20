@@ -105,7 +105,14 @@ async function readIdmapTokens(path: string): Promise<Map<string, string>> {
     // Parse the same rows validateIdMap accepts (trimmed, `:` or `=` separator), so every
     // token recognized as a valid source id is also resolvable for drift detection.
     const match = /^-\s+`([^`]+)`\s*(?::|=)\s*(.+)$/.exec(line.trim());
-    if (match && match[1] && match[2]) tokens.set(match[1], match[2].trim());
+    if (!match || !match[1] || !match[2]) continue;
+    // The value is markdown: feature packs commonly write the path itself as a code span
+    // (`- `ID` = `path``), sometimes with trailing prose. Take the first backtick-quoted
+    // token as the path so drift detection stats a real file instead of one carrying
+    // literal backticks (which always reads as missing); bare values are used verbatim.
+    const value = match[2].trim();
+    const quoted = /^`([^`]+)`/.exec(value);
+    tokens.set(match[1], quoted?.[1] ?? value);
   }
   return tokens;
 }
