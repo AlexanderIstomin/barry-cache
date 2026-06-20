@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-20
+
+### Shared KB
+- barry-cache kb search --source cq now sends multiple domains as repeated `domains` query parameters instead of one comma-joined tag, matching cq's REST contract
+- barry-cache kb contribute now preserves `applies_when` and `avoid_when` in the proposal detail and omits `context.pattern`, avoiding hosted cq failures caused by treating full applies/avoid prose as a pattern search axis
+
 ## 2026-06-19
 
 ### Init Bootstrap
