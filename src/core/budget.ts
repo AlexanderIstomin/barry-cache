@@ -1,6 +1,10 @@
 import type { AdrRecord } from "./adr";
 import type { TokenCounter } from "./tokens";
-import type { FactRecord, FeaturePack } from "./types";
+import type { FactRecord, LoadedFeature } from "./types";
+
+// Recommended default per-pack budget — the knee of the recall/savings curve on
+// Barry's own context (full fact recall, ~0 regressions). See ADR-0015.
+export const DEFAULT_LOAD_BUDGET = 1500;
 
 const KIND_WEIGHT: Record<FactRecord["kind"], number> = {
   decision: 5, constraint: 5, risk: 4, implemented: 3, test: 2, "open-question": 2,
@@ -41,7 +45,8 @@ export interface BudgetedContext {
 }
 
 export interface BudgetInput {
-  feature: FeaturePack;
+  feature: LoadedFeature;
+  facts: FactRecord[];
   adrs: AdrRecord[];
   sources: string[];
   task: string;
@@ -51,7 +56,7 @@ export interface BudgetInput {
 }
 
 export function budgetContext(input: BudgetInput): BudgetedContext {
-  const { feature, adrs, sources, budget, counter } = input;
+  const { feature, facts, adrs, sources, budget, counter } = input;
   const expand = new Set(input.expand ?? []);
   const taskTokens = tokenize(input.task);
   // Measure exactly what print() would emit (2-space pretty JSON), so reported tokens match output.
@@ -68,7 +73,7 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
   const dropped: DroppedItem[] = [];
 
   // Forced (expanded) facts first — always included, even past budget.
-  for (const f of feature.facts) {
+  for (const f of facts) {
     if (expand.has(f.id)) {
       includedFacts.push(f);
       used += cost(f);
@@ -76,7 +81,7 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
   }
 
   // Rank the rest; superseded/deprecated are excluded from default selection.
-  const ranked = feature.facts
+  const ranked = facts
     .filter((f) => !expand.has(f.id) && f.status !== "superseded" && f.status !== "deprecated")
     .map((f) => ({ f, rel: relevance(factText(f), taskTokens) }))
     .sort((a, b) =>
@@ -116,7 +121,8 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
     }
   }
 
-  const baseline = cost({ feature, facts: feature.facts, sources, adrs });
+  // Baseline mirrors the exact (deduplicated) raw `load` output shape.
+  const baseline = cost({ feature, facts, sources, adrs });
 
   return {
     feature: core,

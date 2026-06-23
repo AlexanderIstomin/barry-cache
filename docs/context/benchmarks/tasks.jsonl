@@ -1,0 +1,6 @@
+{"id":"B-changelog","task":"make changelog rewrite mode refuse to overwrite an existing changelog file unless rewrite is provided","expect_packs":["changelog-generation"],"expect_facts":["CLG002","CLG004","CLG005"]}
+{"id":"B-authoring","task":"validate duplicate feature fact ids and enum fields, and draft schema-checked fact rows with explicit write","expect_packs":["context-authoring"],"expect_facts":["CA-20260616T130106Z-b3c4","CA-20260616T130306Z-d7e8"]}
+{"id":"B-init","task":"init generates AGENTS.md as the single canonical agent instruction file","expect_packs":["init-bootstrap"],"expect_facts":["INIT-20260619T143909Z-a1d2"]}
+{"id":"B-review","task":"render the review timeline decision nodes and lane headers on the main canvas","expect_packs":["review-interface"],"expect_facts":["REV004","REV010","REV011"]}
+{"id":"B-sharedkb","task":"kb contribute posts queued outbox lessons to cq and kb cq login stores the api key","expect_packs":["shared-kb"],"expect_facts":["SKB-20260619T134159Z-cq03","SKB-20260619T145412Z-cq04"]}
+{"id":"B-loading","task":"load a feature pack within a token budget and expand dropped facts","expect_packs":["context-loading"],"expect_facts":["LOAD-20260623T142945Z-af25"]}

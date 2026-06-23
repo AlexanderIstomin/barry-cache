@@ -6,7 +6,7 @@ import { readTextIfExists, repoPath, writeText } from "./fs";
 import { getCounter, type TokenCounter } from "./tokens";
 import { benchmarkTaskErrors, readIdmapTokens } from "./validate";
 
-export const DEFAULT_BENCH_BUDGET = 2000;
+export const DEFAULT_BENCH_BUDGET = 1500;
 
 export interface BenchmarkTask {
   id: string;
@@ -77,7 +77,7 @@ export async function runBenchmark({ repo, budget, counter = getCounter() }: { r
       const pack = await loadContext({ repo, route: slug });
       if (pack.feature === null) continue;
       const budgeted = budgetContext({
-        feature: pack.feature, adrs: pack.adrs, sources: pack.sources,
+        feature: pack.feature, facts: pack.facts, adrs: pack.adrs, sources: pack.sources,
         task: task.task, budget: effectiveBudget, counter,
       });
       baseline += budgeted.budget.baseline_tokens;
@@ -120,7 +120,9 @@ async function corpusBaselineTokens(repo: string, counter: TokenCounter): Promis
   const { features } = await readContextSnapshot(repo);
   let total = 0;
   for (const feature of features) {
-    total += counter.count(JSON.stringify({ feature, facts: feature.facts }, null, 2));
+    // Mirror the deduplicated load shape: slim feature + facts carried once.
+    const { facts, ...slim } = feature;
+    total += counter.count(JSON.stringify({ feature: slim, facts }, null, 2));
   }
   return total;
 }

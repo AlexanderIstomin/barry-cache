@@ -31,15 +31,17 @@ async function addPack(repo: string, factCount: number): Promise<void> {
 }
 
 describe("load budgeting (CLI)", () => {
-  test("no --budget returns the full raw pack (backward compatible)", async () => {
+  test("no --budget applies the default budget (1500)", async () => {
     await withTempRepo(async (repo) => {
       await initProject({ repo, yes: true, agents: [] });
       await addPack(repo, 12);
       const result = await runCli(repo, ["load", "--route", "demo"]);
       expect(result.code).toBe(0);
       const parsed = JSON.parse(result.stdout);
+      expect(parsed.budget.budget).toBe(1500);
+      // The 12 small facts all fit within 1500, so none are dropped.
       expect(parsed.facts).toHaveLength(12);
-      expect(parsed.budget).toBeUndefined();
+      expect(parsed.budget.dropped).toHaveLength(0);
     });
   });
 
@@ -57,7 +59,7 @@ describe("load budgeting (CLI)", () => {
     });
   });
 
-  test("--expand all reproduces the full raw pack", async () => {
+  test("--expand all reproduces the full raw pack (no duplicated facts)", async () => {
     await withTempRepo(async (repo) => {
       await initProject({ repo, yes: true, agents: [] });
       await addPack(repo, 12);
@@ -66,6 +68,8 @@ describe("load budgeting (CLI)", () => {
       const parsed = JSON.parse(result.stdout);
       expect(parsed.facts).toHaveLength(12);
       expect(parsed.budget).toBeUndefined();
+      // Dedup: facts are carried once at the top level, not nested under `feature`.
+      expect(parsed.feature.facts).toBeUndefined();
     });
   });
 

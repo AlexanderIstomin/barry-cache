@@ -3,7 +3,7 @@ import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
 import { createFeaturePack, draftFact } from "./core/authoring";
 import { buildChangelog, writeChangelog, type WriteChangelogResult } from "./core/changelog";
 import { finalizeProject, loadContext, recordValidationFailure, resumeProject, routeTask, searchContext, type ValidationFailureStatus } from "./core/context";
-import { budgetContext } from "./core/budget";
+import { budgetContext, DEFAULT_LOAD_BUDGET } from "./core/budget";
 import { getCounter } from "./core/tokens";
 import { runBenchmark, readBenchmarkTasks, seedBenchmarkTasks, writeSeededTasks, type BenchmarkReport } from "./core/benchmark";
 import { importPulpcutKb } from "./core/import-pulpcut";
@@ -93,15 +93,17 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       case "load": {
         const route = requiredString(parsed, "route", commandUsage("load"));
         const loaded = await loadContext({ repo, route });
-        const budget = optionalPositiveInt(parsed, "budget", commandUsage("load"));
+        // Budgeting is on by default (DEFAULT_LOAD_BUDGET); `--expand all` returns the full pack.
+        const budget = optionalPositiveInt(parsed, "budget", commandUsage("load")) ?? DEFAULT_LOAD_BUDGET;
         const expand = optionalList(parsed, "expand", commandUsage("load"));
-        if (budget === undefined || expand.includes("all") || loaded.feature === null) {
+        if (expand.includes("all") || loaded.feature === null) {
           print(loaded, json);
           break;
         }
         const task = optionalString(parsed, "task", commandUsage("load")) ?? "";
         print(budgetContext({
           feature: loaded.feature,
+          facts: loaded.facts,
           adrs: loaded.adrs,
           sources: loaded.sources,
           task,
@@ -113,10 +115,9 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       }
       case "resume": {
         const task = requiredString(parsed, "task", commandUsage("resume"));
-        const budget = optionalPositiveInt(parsed, "budget", commandUsage("resume"));
-        const resumeOptions: Parameters<typeof resumeProject>[0] = { repo, task };
-        if (budget !== undefined) resumeOptions.budget = budget;
-        print(await resumeProject(resumeOptions), json);
+        // Default-on: resume attaches a budgeted preview of the top route unless --budget 0-like overrides.
+        const budget = optionalPositiveInt(parsed, "budget", commandUsage("resume")) ?? DEFAULT_LOAD_BUDGET;
+        print(await resumeProject({ repo, task, budget }), json);
         break;
       }
       case "finalize": {
@@ -996,8 +997,8 @@ function commandUsage(command: string): string | undefined {
     "adr list": "barry-cache adr list [--json]",
     route: 'barry-cache route --task "..." [--json]',
     search: 'barry-cache search --query "..." [--json]',
-    load: 'barry-cache load --route "..." [--task "..."] [--budget N] [--expand ID1,ID2|all] [--json]',
-    resume: 'barry-cache resume --task "..." [--budget N] [--json]',
+    load: 'barry-cache load --route "..." [--task "..."] [--budget N (default 1500)] [--expand ID1,ID2|all] [--json]',
+    resume: 'barry-cache resume --task "..." [--budget N (default 1500)] [--json]',
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',

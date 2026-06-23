@@ -29,7 +29,7 @@ describe("budgetContext", () => {
       fact("F2", { object: "playback drift fix", tags: ["drift"] }),
     ];
     const out = budgetContext({
-      feature: pack(facts), adrs: NO_ADRS, sources: ["docs/context/features/demo/README.md"],
+      feature: pack(facts), facts, adrs: NO_ADRS, sources: ["docs/context/features/demo/README.md"],
       task: "fix playback drift", budget: 100000, counter: heuristicCounter,
     });
     expect(out.feature.title).toBe("Demo Pack");
@@ -46,7 +46,7 @@ describe("budgetContext", () => {
   test("drops lowest-ranked facts past the budget and lists them", () => {
     const facts = [fact("F1"), fact("F2"), fact("F3"), fact("F4")];
     const out = budgetContext({
-      feature: pack(facts), adrs: NO_ADRS, sources: [],
+      feature: pack(facts), facts, adrs: NO_ADRS, sources: [],
       task: "", budget: 80, counter: heuristicCounter,
     });
     const droppedIds = out.budget.dropped.map((d) => d.id);
@@ -62,13 +62,13 @@ describe("budgetContext", () => {
   test("excludes superseded facts but restores them via expand", () => {
     const facts = [fact("F1"), fact("OLD", { status: "superseded" })];
     const base = budgetContext({
-      feature: pack(facts), adrs: NO_ADRS, sources: [],
+      feature: pack(facts), facts, adrs: NO_ADRS, sources: [],
       task: "", budget: 100000, counter: heuristicCounter,
     });
     expect(base.facts.some((f) => f.id === "OLD")).toBe(false);
 
     const expanded = budgetContext({
-      feature: pack(facts), adrs: NO_ADRS, sources: [],
+      feature: pack(facts), facts, adrs: NO_ADRS, sources: [],
       task: "", budget: 100000, counter: heuristicCounter, expand: ["OLD"],
     });
     expect(expanded.facts.some((f) => f.id === "OLD")).toBe(true);
@@ -81,13 +81,13 @@ describe("budgetContext", () => {
       content: "The decision summary line.\n\nLong rationale that should not appear in the summary view.",
     };
     const summary = budgetContext({
-      feature: pack([fact("F1")]), adrs: [adr], sources: [],
+      feature: pack([fact("F1")]), facts: [fact("F1")], adrs: [adr], sources: [],
       task: "", budget: 100000, counter: heuristicCounter,
     });
     expect(summary.adrs[0]).toEqual({ id: "ADR-0001", title: "Use repo-native context", summary: "The decision summary line." });
 
     const full = budgetContext({
-      feature: pack([fact("F1")]), adrs: [adr], sources: [],
+      feature: pack([fact("F1")]), facts: [fact("F1")], adrs: [adr], sources: [],
       task: "", budget: 100000, counter: heuristicCounter, expand: ["ADR-0001"],
     });
     expect(full.adrs[0]?.summary).toContain("Long rationale");
@@ -96,7 +96,7 @@ describe("budgetContext", () => {
   test("forced expand is included even when it overflows the budget; overflow is reported", () => {
     const big = fact("BIG", { object: "x".repeat(400) });
     const out = budgetContext({
-      feature: pack([big]), adrs: NO_ADRS, sources: [],
+      feature: pack([big]), facts: [big], adrs: NO_ADRS, sources: [],
       task: "", budget: 10, counter: heuristicCounter, expand: ["BIG"],
     });
     expect(out.facts.some((f) => f.id === "BIG")).toBe(true);
