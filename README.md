@@ -63,10 +63,12 @@ barry-cache finalize --status success --summary "Updated renderer clock context"
 | Command | What it does |
 |---|---|
 | `init [--agents …] [--yes] [--dry-run]` | Create/refresh the context structure and agent adapters. |
-| `resume --task "…"` | Startup brief for a task: routes + execution contract. |
+| `resume --task "…" [--budget N]` | Startup brief for a task: routes + execution contract; with `--budget`, also a budgeted preview of the top route. |
 | `route --task "…"` | Score feature packs against a task; return best routes. |
 | `search --query "…"` | Search feature packs, facts, and ADRs. |
-| `load --route <name>` | Load one feature pack (README, facts, linked ADRs, sources). |
+| `load --route <name> [--budget N] [--expand <id\|all>]` | Load one feature pack; with `--budget`, a lossless relevance-ranked slice within the token budget, listing dropped ids to `--expand` (or `--expand all` for the full pack). |
+| `bench run [--budget N]` | Run benchmark fixtures: report tokens saved vs. full-context baseline and pack/fact recall. |
+| `bench seed [--write]` | Draft benchmark fixtures from recorded handoffs (review, then `--write` to append). |
 | `finalize --status <s> --summary "…"` | Append an operational handoff (`success`/`partial`/`blocked`/`failed`). |
 | `failure record --summary … --expected … --actual …` | Record a validation contradiction; link it with `--challenges`. |
 | `validate` / `doctor` | Check context is structurally valid (required files, ADR frontmatter, every fact row). |

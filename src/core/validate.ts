@@ -95,10 +95,61 @@ export async function validateProject({ repo, now = new Date(), staleAfterDays =
     }
   }
 
+  errors.push(...await validateBenchmarkTasks(repo));
+
   return { ok: errors.length === 0, errors, warnings };
 }
 
-async function readIdmapTokens(path: string): Promise<Map<string, string>> {
+export function benchmarkTaskErrors(value: unknown): string[] {
+  if (typeof value !== "object" || value === null) return ["benchmark task must be an object"];
+  const task = value as Record<string, unknown>;
+  const errors: string[] = [];
+  for (const key of ["id", "task"] as const) {
+    if (task[key] === undefined) errors.push(`missing required field: ${key}`);
+    else if (typeof task[key] !== "string" || (task[key] as string).length === 0) errors.push(`invalid field: ${key}`);
+  }
+  if (task.expect_packs === undefined) {
+    errors.push("missing required field: expect_packs");
+  } else if (!Array.isArray(task.expect_packs) || task.expect_packs.length === 0 || task.expect_packs.some((item) => typeof item !== "string")) {
+    errors.push("invalid field: expect_packs");
+  }
+  if (task.expect_facts !== undefined && (!Array.isArray(task.expect_facts) || task.expect_facts.some((item) => typeof item !== "string"))) {
+    errors.push("invalid field: expect_facts");
+  }
+  if (task.budget !== undefined && (typeof task.budget !== "number" || !Number.isInteger(task.budget) || task.budget < 1)) {
+    errors.push("invalid field: budget");
+  }
+  return errors;
+}
+
+async function validateBenchmarkTasks(repo: string): Promise<CommandIssue[]> {
+  const path = repoPath(repo, "docs/context/benchmarks/tasks.jsonl");
+  if (!(await exists(path))) return [];
+  const file = "docs/context/benchmarks/tasks.jsonl";
+  const errors: CommandIssue[] = [];
+  const seen = new Set<string>();
+  const rows = (await readTextIfExists(path)).split(/\r?\n/);
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index] ?? "";
+    if (row.trim().length === 0) continue;
+    const line = index + 1;
+    let value: unknown;
+    try {
+      value = JSON.parse(row) as unknown;
+    } catch {
+      errors.push({ file, line, message: "invalid JSON" });
+      continue;
+    }
+    for (const message of benchmarkTaskErrors(value)) errors.push({ file, line, message });
+    if (hasStringField(value, "id")) {
+      if (seen.has(value.id)) errors.push({ file, line, message: `duplicate benchmark task id: ${value.id}` });
+      seen.add(value.id);
+    }
+  }
+  return errors;
+}
+
+export async function readIdmapTokens(path: string): Promise<Map<string, string>> {
   const tokens = new Map<string, string>();
   const text = await readTextIfExists(path);
   for (const line of text.split(/\r?\n/)) {
