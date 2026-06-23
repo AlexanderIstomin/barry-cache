@@ -115,7 +115,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       }
       case "resume": {
         const task = requiredString(parsed, "task", commandUsage("resume"));
-        // Default-on: resume attaches a budgeted preview of the top route unless --budget 0-like overrides.
+        // Default-on: resume always attaches a budgeted preview of the top route (DEFAULT_LOAD_BUDGET); --budget only resizes it.
         const budget = optionalPositiveInt(parsed, "budget", commandUsage("resume")) ?? DEFAULT_LOAD_BUDGET;
         print(await resumeProject({ repo, task, budget }), json);
         break;
@@ -1037,7 +1037,7 @@ Usage:
   barry-cache validate [--strict] [--json]
   barry-cache route --task "..." [--json]
   barry-cache search --query "..." [--json]
-  barry-cache load --route "..." [--json]
+  barry-cache load --route "..." [--budget N] [--expand <id|all>] [--json]
   barry-cache resume --task "..." [--budget N] [--json]
   barry-cache bench run [--budget N] [--json]
   barry-cache bench seed [--write] [--json]

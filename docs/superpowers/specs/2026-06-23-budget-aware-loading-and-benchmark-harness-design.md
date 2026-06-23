@@ -1,8 +1,19 @@
 # Budget-aware loading + structural benchmark harness
 
 - Date: 2026-06-23
-- Status: approved (design)
+- Status: approved (design); see **Amendment** for decisions that evolved during implementation.
 - Inspiration: Headroom (`headroomlabs-ai/headroom`) — adapted to Barry's lossless, auditable, dependency-light philosophy.
+
+> **Amendment (shipped behavior).** Two decisions evolved from this spec during
+> implementation; ADR-0015 is the canonical record:
+> 1. The **CLI makes budgeting default-on at 1500 tokens/pack** (`DEFAULT_LOAD_BUDGET`),
+>    with `load --expand all` as the full-pack escape hatch. The library API
+>    (`budgetContext`/`resumeProject`) stays opt-in, so the default is a CLI policy.
+> 2. `loadContext` **deduplicates facts** — carried once at the top level, not also
+>    under `feature` — shrinking raw `load` output ~43% on Barry's own context.
+>
+> Also: `DEFAULT_BENCH_BUDGET` shipped as **1500** (not 2000), aligned to the
+> benchmarked recall/savings knee.
 
 ## Context
 
@@ -29,8 +40,9 @@ guards recall.
 2. A deterministic `bench` harness measures tokens saved vs. a full-context baseline
    and recall (did routing + budgeting still surface the expected packs/facts?). No
    API keys, no model calls — reproducible in CI.
-3. Backward compatible: with no `--budget`, `load`/`resume` output is byte-identical
-   to today. Budgeting is strictly opt-in.
+3. Backward compatible at the library level: `budgetContext`/`resumeProject` stay
+   opt-in (no budget → full). **As shipped, the CLI defaults to budgeting at 1500
+   tokens/pack; `load --expand all` returns the full pack** (see Amendment).
 
 ## Non-goals (deferred)
 
@@ -116,7 +128,7 @@ retrievable via `--expand`. Budgeting never mutates `docs/context/`.
 **`bench run [--budget N] [--json]`** — for each fixture:
 1. `routeTask(task)` → routed packs.
 2. `loadContext` for routed packs; apply budget (precedence: `--budget` flag >
-   `fixture.budget` > `DEFAULT_BENCH_BUDGET = 2000`).
+   `fixture.budget` > `DEFAULT_BENCH_BUDGET` = 1500).
 3. Metrics:
    - `baseline_tokens` — unbudgeted routed packs (full render).
    - `loaded_tokens` — after budgeting.

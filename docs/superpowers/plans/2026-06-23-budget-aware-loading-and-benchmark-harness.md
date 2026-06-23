@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Amendment (shipped behavior — read first).** This plan predates two decisions
+> made during implementation; where it says "opt-in" / "byte-identical with no
+> `--budget`", the shipped behavior is: (1) the **CLI defaults budgeting on at 1500
+> tokens/pack** (`DEFAULT_LOAD_BUDGET`), with `load --expand all` for the full pack —
+> the library API stays opt-in; (2) `loadContext` **deduplicates facts** (carried
+> once at top level, not under `feature`). Also `DEFAULT_BENCH_BUDGET` shipped as
+> **1500**, not 2000. ADR-0015 is canonical.
+
 **Goal:** Add opt-in, lossless token-budget-aware loading to `load`/`resume`, plus a deterministic structural benchmark harness that measures token savings and recall.
 
 **Architecture:** Two new pure modules — `tokens.ts` (pluggable token counting) and `budget.ts` (relevance-ranked, budget-bounded selection of a feature pack with CCR-style expansion) — consumed by the existing `load`/`resume` CLI paths. A `benchmark.ts` module + `bench` command run fixtures through route→load→budget and report metrics. All new behavior is opt-in; with no `--budget`, output is byte-identical to today.
