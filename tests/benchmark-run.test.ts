@@ -38,14 +38,19 @@ describe("benchmark run", () => {
   test("computes recall and savings for a fixture", async () => {
     await withTempRepo(async (repo) => {
       await initProject({ repo, yes: true, agents: [] });
-      await addPack(repo, "renderer", ["transport clock drift", "frame scheduler", "buffer pool", "audio sync"]);
+      await addPack(repo, "renderer", [
+        "transport clock drift", "frame scheduler", "buffer pool", "audio sync", "color space",
+        "gpu upload", "vsync timing", "frame pacing", "dropped frames", "render graph",
+        "shader cache", "texture atlas",
+      ]);
       await writeFixtures(repo, [
-        { id: "B1", task: "fix transport clock drift in renderer", expect_packs: ["renderer"], expect_facts: ["RENDERER0"], budget: 200 },
+        { id: "B1", task: "fix transport clock drift in renderer", expect_packs: ["renderer"], expect_facts: ["RENDERER0"], budget: 600 },
       ]);
       const report = await runBenchmark({ repo });
       expect(report.tasks[0]?.pack_recall).toBe(1);
-      expect(report.tasks[0]?.fact_recall).toBe(1);
+      expect(report.tasks[0]?.fact_recall).toBe(1); // top-ranked relevant fact survives the budget
       expect(report.tasks[0]?.tokens_saved_pct).toBeGreaterThan(0);
+      expect(report.tasks[0]?.budget_overflow).toBe(0); // fit-to-budget keeps the output within budget
       expect(report.recall_regressions).toBe(0);
     });
   });

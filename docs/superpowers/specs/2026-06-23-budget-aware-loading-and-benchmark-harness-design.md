@@ -12,8 +12,9 @@
 > 2. `loadContext` **deduplicates facts** — carried once at the top level, not also
 >    under `feature` — shrinking raw `load` output ~43% on Barry's own context.
 >
-> Also: `DEFAULT_BENCH_BUDGET` shipped as **1500** (not 2000), aligned to the
-> benchmarked recall/savings knee.
+> Also: `DEFAULT_BENCH_BUDGET` shipped as **1500** (not 2000), matching the load
+> default. Selection fits the full emitted output within the budget; on Barry's own
+> packs `bench run` shows full fact recall around **2000** — tune per repo.
 
 ## Context
 

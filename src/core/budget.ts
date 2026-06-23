@@ -2,8 +2,9 @@ import type { AdrRecord } from "./adr";
 import type { TokenCounter } from "./tokens";
 import type { FactRecord, LoadedFeature } from "./types";
 
-// Recommended default per-pack budget — the knee of the recall/savings curve on
-// Barry's own context (full fact recall, ~0 regressions). See ADR-0015.
+// Default per-pack budget. Selection fits the full emitted output within this budget,
+// so it trades recall for savings: `bench run` on Barry's own packs shows ~94% fact
+// recall here and full recall around 2000 — tune per repo. See ADR-0015.
 export const DEFAULT_LOAD_BUDGET = 1500;
 
 const KIND_WEIGHT: Record<FactRecord["kind"], number> = {
@@ -28,6 +29,7 @@ export interface BudgetReport {
   saved_pct: number;
   overflow: number;
   dropped: string[];
+  unknown_expand: string[];
   expand_hint: string;
 }
 
@@ -62,24 +64,16 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
     title: firstHeading(feature.readme) || feature.slug,
     summary: firstParagraph(feature.readme),
   };
-  // `selected` is the running content tally that drives inclusion decisions. The
-  // reported `used` (below) is the cost of the whole emitted object.
-  let selected = cost(core) + cost(sources);
 
-  const includedFacts: FactRecord[] = [];
-  const dropped: string[] = [];
+  // Forced (expanded) ids are always kept; record which ones actually matched so the
+  // CLI can warn about typos (unknown ids that selected nothing).
+  const forcedFactIds = new Set(facts.filter((f) => expand.has(f.id)).map((f) => f.id));
+  const forcedAdrIds = new Set(adrs.filter((a) => expand.has(a.id)).map((a) => a.id));
+  const unknownExpand = [...expand].filter((id) => id !== "all" && !forcedFactIds.has(id) && !forcedAdrIds.has(id));
 
-  // Forced (expanded) facts first — always included, even past budget.
-  for (const f of facts) {
-    if (expand.has(f.id)) {
-      includedFacts.push(f);
-      selected += cost(f);
-    }
-  }
-
-  // Rank the rest; superseded/deprecated are excluded from default selection.
+  // Forced facts first, then ranked candidates (high → low priority).
   const ranked = facts
-    .filter((f) => !expand.has(f.id) && f.status !== "superseded" && f.status !== "deprecated")
+    .filter((f) => !forcedFactIds.has(f.id) && f.status !== "superseded" && f.status !== "deprecated")
     .map((f) => ({ f, rel: relevance(factText(f), taskTokens) }))
     .sort((a, b) =>
       b.rel - a.rel ||
@@ -89,54 +83,56 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
       a.f.id.localeCompare(b.f.id))
     .map((entry) => entry.f);
 
-  for (const f of ranked) {
-    const c = cost(f);
-    if (selected + c <= budget) {
-      includedFacts.push(f);
-      selected += c;
-    } else {
-      dropped.push(f.id);
-    }
-  }
+  const forcedCount = forcedFactIds.size;
+  const includedFacts: FactRecord[] = [...facts.filter((f) => forcedFactIds.has(f.id)), ...ranked];
 
-  // ADRs: title + summary by default; full body only when expanded.
-  const adrViews: BudgetedAdr[] = [];
-  for (const adr of adrs) {
-    if (expand.has(adr.id)) {
-      const full: BudgetedAdr = { id: adr.id, title: adr.title, summary: adr.content };
-      adrViews.push(full);
-      selected += cost(full);
-      continue;
-    }
-    const view: BudgetedAdr = { id: adr.id, title: adr.title, summary: firstParagraph(adr.content) };
-    const c = cost(view);
-    if (selected + c <= budget) {
-      adrViews.push(view);
-      selected += c;
-    } else {
-      dropped.push(adr.id);
-    }
-  }
+  // ADRs: forced → full body; the rest → title + summary, trimmable.
+  const adrViews: BudgetedAdr[] = [
+    ...adrs.filter((a) => forcedAdrIds.has(a.id)).map((a) => ({ id: a.id, title: a.title, summary: a.content })),
+    ...adrs.filter((a) => !forcedAdrIds.has(a.id)).map((a) => ({ id: a.id, title: a.title, summary: firstParagraph(a.content) })),
+  ];
+  const forcedAdrCount = forcedAdrIds.size;
 
   // Baseline mirrors the exact (deduplicated) raw `load` output shape.
   const baseline = cost({ feature, facts, sources, adrs });
+  const dropped: string[] = [];
+  const expand_hint = `barry-cache load --route ${feature.slug} --budget ${budget} --expand <ID> (or --expand all for the full pack)`;
 
-  const report: BudgetReport = {
-    budget,
-    used: 0,
-    baseline_tokens: baseline,
-    saved_pct: 0,
-    overflow: 0,
-    dropped,
-    expand_hint: `barry-cache load --route ${feature.slug} --budget ${budget} --expand <ID> (or --expand all for the full pack)`,
+  // `used` is the cost of the WHOLE emitted object (content + sources + this report).
+  // Start with everything selectable, then trim the lowest-ranked item until the full
+  // emitted output fits the budget. Forced --expand items and the core summary are
+  // never trimmed, so they (and only they) can push `used` past the budget.
+  const measure = (): number => cost({
+    feature: core, facts: includedFacts, adrs: adrViews, sources,
+    budget: { budget, used: 0, baseline_tokens: baseline, saved_pct: 0, overflow: 0, dropped, unknown_expand: unknownExpand, expand_hint },
+  });
+  while (measure() > budget) {
+    if (includedFacts.length > forcedCount) {
+      dropped.push(includedFacts.pop()!.id); // lowest-ranked fact
+    } else if (adrViews.length > forcedAdrCount) {
+      dropped.push(adrViews.pop()!.id); // lowest-priority ADR summary
+    } else {
+      break; // only forced items + core remain — allowed to overflow
+    }
+  }
+
+  const used = measure();
+  return {
+    feature: core,
+    facts: includedFacts,
+    adrs: adrViews,
+    sources,
+    budget: {
+      budget,
+      used,
+      baseline_tokens: baseline,
+      saved_pct: baseline > 0 ? Math.max(0, round4(1 - used / baseline)) : 0,
+      overflow: Math.max(0, used - budget),
+      dropped,
+      unknown_expand: unknownExpand,
+      expand_hint,
+    },
   };
-  const result: BudgetedContext = { feature: core, facts: includedFacts, adrs: adrViews, sources, budget: report };
-  // `used` = the true cost of everything emitted (including sources and this report).
-  const used = cost(result);
-  report.used = used;
-  report.overflow = Math.max(0, used - budget);
-  report.saved_pct = baseline > 0 ? round4(1 - used / baseline) : 0;
-  return result;
 }
 
 function confidenceWeight(fact: FactRecord): number {

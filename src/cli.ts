@@ -101,7 +101,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           break;
         }
         const task = optionalString(parsed, "task", commandUsage("load")) ?? "";
-        print(budgetContext({
+        const budgeted = budgetContext({
           feature: loaded.feature,
           facts: loaded.facts,
           adrs: loaded.adrs,
@@ -110,7 +110,11 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           budget,
           counter: getCounter(),
           expand,
-        }), json);
+        });
+        if (budgeted.budget.unknown_expand.length > 0) {
+          console.error(`warning: --expand id(s) not found in ${route}: ${budgeted.budget.unknown_expand.join(", ")}`);
+        }
+        print(budgeted, json);
         break;
       }
       case "resume": {
@@ -357,14 +361,22 @@ async function handleBenchCommand(parsed: ParsedArgs, repo: string, json: boolea
   const action = parsed.positionals[0];
   if (action === "run") {
     const budget = optionalPositiveInt(parsed, "budget", commandUsage("bench run"));
-    const { tasks } = await readBenchmarkTasks(repo);
+    const allowInvalid = parsed.flags.get("allow-invalid") === true;
+    const { tasks, skipped } = await readBenchmarkTasks(repo);
+    if (skipped > 0) {
+      console.error(`warning: skipped ${skipped} malformed benchmark fixture row(s); run \`barry-cache validate\` for line-level details.`);
+    }
     if (tasks.length === 0) {
-      print({ tasks: [], mean_tokens_saved_pct: 0, mean_pack_recall: 0, mean_fact_recall: 0, recall_regressions: 0, corpus_baseline_pct: 0 }, json,
-        "No benchmark fixtures found. Run `barry-cache bench seed` or create docs/context/benchmarks/tasks.jsonl.");
+      const message = skipped > 0
+        ? `No usable benchmark fixtures (${skipped} row(s) invalid). Run \`barry-cache validate\`, or \`barry-cache bench seed\`.`
+        : "No benchmark fixtures found. Run `barry-cache bench seed` or create docs/context/benchmarks/tasks.jsonl.";
+      print({ tasks: [], mean_tokens_saved_pct: 0, mean_pack_recall: 0, mean_fact_recall: 0, recall_regressions: 0, corpus_baseline_pct: 0, skipped }, json, message);
+      if (skipped > 0 && !allowInvalid) process.exitCode = 1;
       return;
     }
     const report = await runBenchmark(budget === undefined ? { repo } : { repo, budget });
-    print(report, json, formatBenchReport(report));
+    print({ ...report, skipped }, json, formatBenchReport(report) + (skipped > 0 ? `\nSkipped ${skipped} malformed fixture row(s) — run \`barry-cache validate\`.` : ""));
+    if (skipped > 0 && !allowInvalid) process.exitCode = 1;
     return;
   }
   if (action === "seed") {
@@ -1019,7 +1031,7 @@ function commandUsage(command: string): string | undefined {
     import: "barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]",
     review: "barry-cache review [--port 8787] [--open] [--json]",
     bench: "barry-cache bench <run|seed> [--json]",
-    "bench run": "barry-cache bench run [--budget N] [--json]",
+    "bench run": "barry-cache bench run [--budget N] [--allow-invalid] [--json]",
     "bench seed": "barry-cache bench seed [--write] [--json]",
   };
   return usages[command];

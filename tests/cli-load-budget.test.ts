@@ -49,9 +49,11 @@ describe("load budgeting (CLI)", () => {
     await withTempRepo(async (repo) => {
       await initProject({ repo, yes: true, agents: [] });
       await addPack(repo, 12);
-      const result = await runCli(repo, ["load", "--route", "demo", "--budget", "120"]);
+      const result = await runCli(repo, ["load", "--route", "demo", "--budget", "400"]);
       expect(result.code).toBe(0);
       const parsed = JSON.parse(result.stdout);
+      expect(parsed.budget.used).toBeLessThanOrEqual(400); // fit-to-budget keeps output within budget
+      expect(parsed.budget.overflow).toBe(0);
       expect(parsed.facts.length).toBeLessThan(12);
       expect(parsed.budget.dropped.length).toBeGreaterThan(0);
       expect(typeof parsed.budget.dropped[0]).toBe("string"); // dropped is a compact id list

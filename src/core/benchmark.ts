@@ -117,12 +117,14 @@ export async function runBenchmark({ repo, budget, counter = getCounter() }: { r
 }
 
 async function corpusBaselineTokens(repo: string, counter: TokenCounter): Promise<number> {
+  // Denominator must match the per-task baseline shape: the full (deduplicated) raw
+  // load of each pack, including sources and linked ADRs. corpus_baseline_pct is then
+  // the mean per-task budgeted load as a fraction of loading the whole corpus at full detail.
   const { features } = await readContextSnapshot(repo);
   let total = 0;
   for (const feature of features) {
-    // Mirror the deduplicated load shape: slim feature + facts carried once.
-    const { facts, ...slim } = feature;
-    total += counter.count(JSON.stringify({ feature: slim, facts }, null, 2));
+    const loaded = await loadContext({ repo, route: feature.slug });
+    total += counter.count(JSON.stringify({ feature: loaded.feature, facts: loaded.facts, sources: loaded.sources, adrs: loaded.adrs }, null, 2));
   }
   return total;
 }
