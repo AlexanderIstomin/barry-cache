@@ -2,10 +2,10 @@ import type { AdrRecord } from "./adr";
 import type { TokenCounter } from "./tokens";
 import type { FactRecord, LoadedFeature } from "./types";
 
-// Default per-pack budget. Selection fits the full emitted output within this budget,
-// so it trades recall for savings: `bench run` on Barry's own packs shows ~94% fact
-// recall here and full recall around 2000 — tune per repo. See ADR-0015.
-export const DEFAULT_LOAD_BUDGET = 1500;
+// Default per-pack budget — the benchmarked full-recall knee on Barry's own packs
+// (`bench run`: ~100% fact recall, 0 regressions). Selection fits the full emitted
+// output within the budget; lower it to trade recall for more savings. See ADR-0015.
+export const DEFAULT_LOAD_BUDGET = 2000;
 
 const KIND_WEIGHT: Record<FactRecord["kind"], number> = {
   decision: 5, constraint: 5, risk: 4, implemented: 3, test: 2, "open-question": 2,

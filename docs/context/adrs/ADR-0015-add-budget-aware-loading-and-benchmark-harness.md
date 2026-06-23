@@ -28,12 +28,13 @@ benchmark (Approach A):
   relevance-ranked, terse slice (core summary + ranked facts + ADR summaries) and
   reports dropped ids; `--expand <ID|all>` restores any of it. Nothing is deleted —
   every item stays on disk and addressable, so the operation is lossless and
-  reversible. The CLI applies a default budget of **1500 tokens/pack**
-  (`DEFAULT_LOAD_BUDGET`). Selection trims the lowest-ranked items until the **full
-  emitted output** fits the budget; forced `--expand` items and the core summary may
-  still exceed it. `load --expand all` returns the full pack. Per `bench run` on
-  Barry's own packs, full fact recall lands around **2000 tokens/pack** — tune per
-  repo. The underlying `budgetContext`/`resumeProject` library API stays opt-in
+  reversible. The CLI applies a default budget of **2000 tokens/pack**
+  (`DEFAULT_LOAD_BUDGET`, the benchmarked full-recall knee on Barry's own packs —
+  `bench run`: ~100% fact recall, 0 regressions). Selection trims the lowest-ranked
+  items until the **full emitted output** fits the budget; forced `--expand` items
+  and the core summary may still exceed it. `load --expand all` returns the full
+  pack; lower `--budget` to trade recall for savings. The underlying
+  `budgetContext`/`resumeProject` library API stays opt-in
   (no budget → full), so the default is a CLI policy, not a mechanism change.
 - `loadContext` carries facts once (top-level) instead of duplicating them under
   `feature`, shrinking raw `load` output ≈43% on Barry's own context independent of
@@ -49,7 +50,7 @@ The general "context-fitting" pipeline (Approach B) and a real BPE tokenizer are
 ## Consequences
 
 - No new runtime dependencies. The library API stays backward compatible
-  (budgeting opt-in at the module level); the CLI defaults to budgeting at 1500/pack,
+  (budgeting opt-in at the module level); the CLI defaults to budgeting at 2000/pack,
   so default `load`/`resume` output now favors a budgeted slice over the full pack.
 - The lossless invariant (dropped items remain on disk, restorable via `--expand`)
   is enforced by tests.

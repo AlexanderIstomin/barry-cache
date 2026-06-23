@@ -31,15 +31,15 @@ async function addPack(repo: string, factCount: number): Promise<void> {
 }
 
 describe("load budgeting (CLI)", () => {
-  test("no --budget applies the default budget (1500)", async () => {
+  test("no --budget applies the default budget (2000)", async () => {
     await withTempRepo(async (repo) => {
       await initProject({ repo, yes: true, agents: [] });
       await addPack(repo, 12);
       const result = await runCli(repo, ["load", "--route", "demo"]);
       expect(result.code).toBe(0);
       const parsed = JSON.parse(result.stdout);
-      expect(parsed.budget.budget).toBe(1500);
-      // The 12 small facts all fit within 1500, so none are dropped.
+      expect(parsed.budget.budget).toBe(2000);
+      // The 12 small facts all fit within 2000, so none are dropped.
       expect(parsed.facts).toHaveLength(12);
       expect(parsed.budget.dropped).toHaveLength(0);
     });

@@ -6,7 +6,7 @@ import { readTextIfExists, repoPath, writeText } from "./fs";
 import { getCounter, type TokenCounter } from "./tokens";
 import { benchmarkTaskErrors, readIdmapTokens } from "./validate";
 
-export const DEFAULT_BENCH_BUDGET = 1500;
+export const DEFAULT_BENCH_BUDGET = 2000;
 
 export interface BenchmarkTask {
   id: string;

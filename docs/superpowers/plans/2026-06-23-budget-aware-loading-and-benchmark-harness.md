@@ -4,11 +4,12 @@
 
 > **Amendment (shipped behavior — read first).** This plan predates two decisions
 > made during implementation; where it says "opt-in" / "byte-identical with no
-> `--budget`", the shipped behavior is: (1) the **CLI defaults budgeting on at 1500
-> tokens/pack** (`DEFAULT_LOAD_BUDGET`), with `load --expand all` for the full pack —
-> the library API stays opt-in; (2) `loadContext` **deduplicates facts** (carried
-> once at top level, not under `feature`). Also `DEFAULT_BENCH_BUDGET` shipped as
-> **1500**, not 2000. ADR-0015 is canonical.
+> `--budget`", the shipped behavior is: (1) the **CLI defaults budgeting on at 2000
+> tokens/pack** (`DEFAULT_LOAD_BUDGET` — the benchmarked full-recall knee), with
+> `load --expand all` for the full pack — the library API stays opt-in; (2)
+> `loadContext` **deduplicates facts** (carried once at top level, not under
+> `feature`); and (3) selection trims until the full emitted output fits the budget.
+> `DEFAULT_BENCH_BUDGET` = 2000 (as in the plan body). ADR-0015 is canonical.
 
 **Goal:** Add opt-in, lossless token-budget-aware loading to `load`/`resume`, plus a deterministic structural benchmark harness that measures token savings and recall.
 
