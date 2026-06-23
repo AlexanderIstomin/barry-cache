@@ -44,6 +44,8 @@ ${commandPrefix} search --query "<query>"
 ${commandPrefix} load --route "<route>"
 \`\`\`
 
+\`load\` and \`resume\` return a relevance-ranked budgeted slice by default (~2000 tokens per pack), not the whole pack. Trust the slice — the result lists any \`dropped\` fact ids and an \`expand_hint\`. If a needed fact is missing, restore just that id with \`--expand <id>\`; use \`--expand all\` only when you genuinely need the full pack, or \`--budget <N>\` to resize.
+
 When context files change, run:
 
 \`\`\`bash

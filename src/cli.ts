@@ -3,6 +3,9 @@ import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
 import { createFeaturePack, draftFact } from "./core/authoring";
 import { buildChangelog, writeChangelog, type WriteChangelogResult } from "./core/changelog";
 import { finalizeProject, loadContext, recordValidationFailure, resumeProject, routeTask, searchContext, type ValidationFailureStatus } from "./core/context";
+import { budgetContext, DEFAULT_LOAD_BUDGET } from "./core/budget";
+import { getCounter } from "./core/tokens";
+import { runBenchmark, readBenchmarkTasks, seedBenchmarkTasks, writeSeededTasks, type BenchmarkReport } from "./core/benchmark";
 import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
@@ -89,12 +92,36 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
       }
       case "load": {
         const route = requiredString(parsed, "route", commandUsage("load"));
-        print(await loadContext({ repo, route }), json);
+        const loaded = await loadContext({ repo, route });
+        // Budgeting is on by default (DEFAULT_LOAD_BUDGET); `--expand all` returns the full pack.
+        const budget = optionalPositiveInt(parsed, "budget", commandUsage("load")) ?? DEFAULT_LOAD_BUDGET;
+        const expand = optionalList(parsed, "expand", commandUsage("load"));
+        if (expand.includes("all") || loaded.feature === null) {
+          print(loaded, json);
+          break;
+        }
+        const task = optionalString(parsed, "task", commandUsage("load")) ?? "";
+        const budgeted = budgetContext({
+          feature: loaded.feature,
+          facts: loaded.facts,
+          adrs: loaded.adrs,
+          sources: loaded.sources,
+          task,
+          budget,
+          counter: getCounter(),
+          expand,
+        });
+        if (budgeted.budget.unknown_expand.length > 0) {
+          console.error(`warning: --expand id(s) not found in ${route}: ${budgeted.budget.unknown_expand.join(", ")}`);
+        }
+        print(budgeted, json);
         break;
       }
       case "resume": {
         const task = requiredString(parsed, "task", commandUsage("resume"));
-        print(await resumeProject({ repo, task }), json);
+        // Default-on: resume always attaches a budgeted preview of the top route (DEFAULT_LOAD_BUDGET); --budget only resizes it.
+        const budget = optionalPositiveInt(parsed, "budget", commandUsage("resume")) ?? DEFAULT_LOAD_BUDGET;
+        print(await resumeProject({ repo, task, budget }), json);
         break;
       }
       case "finalize": {
@@ -189,6 +216,10 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         });
         break;
       }
+      case "bench": {
+        await handleBenchCommand(parsed, repo, json);
+        break;
+      }
       case "doctor": {
         const strict = parsed.flags.get("strict") === true;
         const result = await validateProject({ repo });
@@ -250,6 +281,15 @@ function optionalNumber(parsed: ParsedArgs, key: string, fallback: number, usage
   if (typeof value !== "string" || value.length === 0) throw new CliArgumentError(`--${key} requires a number`, { usage: usageValue });
   const parsedValue = Number(value);
   if (!Number.isInteger(parsedValue) || parsedValue < 0 || parsedValue > 65535) throw new CliArgumentError(`--${key} must be a port number`, { usage: usageValue });
+  return parsedValue;
+}
+
+function optionalPositiveInt(parsed: ParsedArgs, key: string, usageValue?: string): number | undefined {
+  const value = parsed.flags.get(key);
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.length === 0) throw new CliArgumentError(`--${key} requires a number`, { usage: usageValue });
+  const parsedValue = Number(value);
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) throw new CliArgumentError(`--${key} must be a positive integer`, { usage: usageValue });
   return parsedValue;
 }
 
@@ -315,6 +355,79 @@ function print(value: unknown, json: boolean, message?: string): void {
     return;
   }
   console.log(JSON.stringify(value, null, 2));
+}
+
+async function handleBenchCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === "run") {
+    const budget = optionalPositiveInt(parsed, "budget", commandUsage("bench run"));
+    const allowInvalid = parsed.flags.get("allow-invalid") === true;
+    const { tasks, skipped } = await readBenchmarkTasks(repo);
+    if (skipped > 0) {
+      console.error(`warning: skipped ${skipped} malformed benchmark fixture row(s); run \`barry-cache validate\` for line-level details.`);
+    }
+    if (tasks.length === 0) {
+      const message = skipped > 0
+        ? `No usable benchmark fixtures (${skipped} row(s) invalid). Run \`barry-cache validate\`, or \`barry-cache bench seed\`.`
+        : "No benchmark fixtures found. Run `barry-cache bench seed` or create docs/context/benchmarks/tasks.jsonl.";
+      print({ tasks: [], mean_tokens_saved_pct: 0, mean_pack_recall: 0, mean_fact_recall: 0, recall_regressions: 0, corpus_baseline_pct: 0, skipped }, json, message);
+      if (skipped > 0 && !allowInvalid) process.exitCode = 1;
+      return;
+    }
+    const report = await runBenchmark(budget === undefined ? { repo } : { repo, budget });
+    print({ ...report, skipped }, json, formatBenchReport(report) + (skipped > 0 ? `\nSkipped ${skipped} malformed fixture row(s) — run \`barry-cache validate\`.` : ""));
+    if (skipped > 0 && !allowInvalid) process.exitCode = 1;
+    return;
+  }
+  if (action === "seed") {
+    await handleBenchSeedCommand(parsed, repo, json);
+    return;
+  }
+  throw new CliArgumentError(action ? `Unknown bench action: ${action}` : "Missing bench action", {
+    usage: commandUsage("bench"),
+  });
+}
+
+async function handleBenchSeedCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const { candidates, skipped } = await seedBenchmarkTasks({ repo });
+  const write = parsed.flags.get("write") === true;
+  if (write) {
+    const result = await writeSeededTasks({ repo, candidates });
+    print({ written: result.written, path: result.path, skipped }, json,
+      `Appended ${result.written} benchmark fixture(s) to ${result.path}.${skipped ? ` Skipped ${skipped} handoff(s) with no inferable pack.` : ""}`);
+    return;
+  }
+  if (json) {
+    print({ candidates, skipped }, true);
+    return;
+  }
+  if (candidates.length === 0) {
+    console.log("No new benchmark fixtures to seed. Finalize a task first, or all handoffs are already covered.");
+    return;
+  }
+  for (const candidate of candidates) console.log(JSON.stringify(candidate));
+  console.log("\nReview the rows above, then run `barry-cache bench seed --write` to append them.");
+}
+
+function formatBenchReport(report: BenchmarkReport): string {
+  if (report.tasks.length === 0) return "No benchmark tasks.";
+  const lines = report.tasks.map((task) =>
+    `  ${task.id}  saved ${pct(task.tokens_saved_pct)}  pack ${pct(task.pack_recall)}  fact ${pct(task.fact_recall)}` +
+    (task.budget_overflow > 0 ? `  overflow ${task.budget_overflow}` : ""));
+  return [
+    `Benchmarked ${report.tasks.length} task(s):`,
+    ...lines,
+    "",
+    `Mean tokens saved: ${pct(report.mean_tokens_saved_pct)}`,
+    `Mean pack recall:  ${pct(report.mean_pack_recall)}`,
+    `Mean fact recall:  ${pct(report.mean_fact_recall)}`,
+    `Recall regressions: ${report.recall_regressions}`,
+    `Budgeted load vs full corpus: ${pct(report.corpus_baseline_pct)}`,
+  ].join("\n");
+}
+
+function pct(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 async function handleAdrCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
@@ -896,8 +1009,8 @@ function commandUsage(command: string): string | undefined {
     "adr list": "barry-cache adr list [--json]",
     route: 'barry-cache route --task "..." [--json]',
     search: 'barry-cache search --query "..." [--json]',
-    load: 'barry-cache load --route "..." [--json]',
-    resume: 'barry-cache resume --task "..." [--json]',
+    load: 'barry-cache load --route "..." [--task "..."] [--budget N (default 2000)] [--expand ID1,ID2|all] [--json]',
+    resume: 'barry-cache resume --task "..." [--budget N (default 2000)] [--json]',
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
@@ -917,6 +1030,9 @@ function commandUsage(command: string): string | undefined {
     changelog: "barry-cache changelog [--write|--rewrite] [--since YYYY-MM-DD] [--file CHANGELOG.md] [--json]",
     import: "barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]",
     review: "barry-cache review [--port 8787] [--open] [--json]",
+    bench: "barry-cache bench <run|seed> [--json]",
+    "bench run": "barry-cache bench run [--budget N] [--allow-invalid] [--json]",
+    "bench seed": "barry-cache bench seed [--write] [--json]",
   };
   return usages[command];
 }
@@ -933,8 +1049,10 @@ Usage:
   barry-cache validate [--strict] [--json]
   barry-cache route --task "..." [--json]
   barry-cache search --query "..." [--json]
-  barry-cache load --route "..." [--json]
-  barry-cache resume --task "..." [--json]
+  barry-cache load --route "..." [--budget N] [--expand <id|all>] [--json]
+  barry-cache resume --task "..." [--budget N] [--json]
+  barry-cache bench run [--budget N] [--json]
+  barry-cache bench seed [--write] [--json]
   barry-cache finalize --summary "..." [--status success] [--json]
   barry-cache failure record --summary "..." --expected "..." --actual "..." [--json]
   barry-cache kb cq login --api-key <key> [--url https://api.cq.exchange]

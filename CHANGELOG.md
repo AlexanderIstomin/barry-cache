@@ -1,10 +1,25 @@
 # Changelog
 
+## 2026-06-23
+
+### Context Loading
+- bench run measures tokens saved and pack/fact recall over docs/context/benchmarks fixtures
+- loadContext carries facts once at the top level instead of duplicating them under feature, shrinking raw load output about 43% on Barry's own context
+- load and resume select context within a token budget defaulting to 1500 per pack (DEFAULT_LOAD_BUDGET) using lossless relevance-ranked facts; --budget overrides and --expand all returns the full pack
+
+### Init Bootstrap
+- Generated Barry agent instructions explain that load and resume return a budgeted slice by default (~1500 tokens/pack) and tell agents to restore dropped facts with --expand <id> or --expand all
+
+
 ## 2026-06-20
 
+### Context Authoring
+- barry-cache validate drift detection resolves IDMAP path values written as markdown code spans (e.g. `- `ID` = `path``) by taking the first backtick-quoted token as the source path, so an existing target no longer false-positives as a missing source file; bare unquoted values are still used verbatim
+
 ### Shared KB
-- barry-cache kb search --source cq now sends multiple domains as repeated `domains` query parameters instead of one comma-joined tag, matching cq's REST contract
-- barry-cache kb contribute now preserves `applies_when` and `avoid_when` in the proposal detail and omits `context.pattern`, avoiding hosted cq failures caused by treating full applies/avoid prose as a pattern search axis
+- barry-cache kb search --source cq queries a configured cq endpoint via GET /api/v1/knowledge through a versioned adapter (CQ_SCHEMA_VERSION), sending each required domain filter (--domains or shared_kb.cq.domains) as a repeated domains query parameter, then mapping cq knowledge_units to Barry search items and scoring them by the free-text query locally; rejects a query with no searchable term (no word of 3+ characters) so it never silently returns the whole domain; gated on share-enabled mode and erroring clearly on a non-JSON response
+- barry-cache kb contribute posts each queued outbox lesson to cq POST /api/v1/knowledge as a propose request (domains<-tags, insight summary/detail/action, provenance plus applies_when/avoid_when prose appended to detail, created_by=validator id, no context.pattern because cq treats pattern as a short search axis), gated on share-enabled, with --dry-run; cq propose carries no signature or evidence and Barry sends nothing signed (no local signing — see ADR-0014)
+
 
 ## 2026-06-19
 
@@ -13,11 +28,7 @@
 
 ### Shared KB
 - cq endpoint descriptor is stored in .barry-cache/config.json as shared_kb.cq with url, optional api_key_ref (env:NAME), and optional domains, and is preserved when the contribution mode is rewritten
-- barry-cache kb contribute posts each queued outbox lesson to cq POST /api/v1/knowledge as a propose request (domains<-tags, insight summary/detail/action, provenance prose appended to detail, created_by=validator id, context.pattern from applies/avoid_when), gated on share-enabled, with --dry-run; cq propose carries no signature or evidence so signing stays local
 - barry-cache kb cq login stores the cq API key in a git-ignored owner-only .barry-cache/cq-credentials.json (separate from config.json), records the cq endpoint (default https://api.cq.exchange — the hosted REST API; cq.exchange itself is the web UI — with --url to override), and enables share-enabled; the key is read from --api-key, CQ_API_KEY, or stdin; resolution prefers an api_key_ref env over the stored key; kb cq logout removes the key and sets local-only
-- barry-cache kb search --source cq queries a configured cq endpoint via GET /api/v1/knowledge through a versioned adapter (CQ_SCHEMA_VERSION), sending a required domains filter (--domains or shared_kb.cq.domains) as the cq query parameter, then mapping cq knowledge_units to Barry search items and scoring them by the free-text query locally; rejects a query with no searchable term (no word of 3+ characters) so it never silently returns the whole domain; gated on share-enabled mode and erroring clearly on a non-JSON response
-- barry-cache kb contribute removes each lesson from the outbox after a successful cq POST so re-running does not re-submit and create duplicate units; failed sends stay queued for retry
-- Removed hive-mind signing residue (ADR-0014): the validator identity is now a stable random per-repo id used only as cq created_by (no Ed25519 keypair or private key on disk), the canonical lesson schema is trimmed to produced/consumed values (status submitted|reviewed|trusted|challenged, evidence.source_type community_report, no supersedes), and the no-op generate-adapters and lint-wiki commands are removed
 
 
 ## 2026-06-18

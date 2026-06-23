@@ -32,6 +32,10 @@ export interface FeaturePack {
   facts: FactRecord[];
 }
 
+// A feature pack without its facts array — used as the `feature` field of load
+// output so facts are carried once (top-level), not duplicated under `feature`.
+export type LoadedFeature = Omit<FeaturePack, "facts">;
+
 export interface RouteMatch {
   slug: string;
   score: number;

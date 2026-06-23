@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Barry Cache benchmark task",
+  "type": "object",
+  "required": ["id", "task", "expect_packs"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "task": { "type": "string", "minLength": 1 },
+    "expect_packs": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "expect_facts": { "type": "array", "items": { "type": "string" } },
+    "budget": { "type": "integer", "minimum": 1 }
+  }
+}

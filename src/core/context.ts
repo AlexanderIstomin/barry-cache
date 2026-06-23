@@ -4,7 +4,9 @@ import { basename, join } from "node:path";
 import { adrToText, linkedAdrsForSources, type AdrRecord } from "./adr";
 import { readContextSnapshot } from "./context-cache";
 import { rel, repoPath } from "./fs";
-import type { FactRecord, FeaturePack, RouteMatch } from "./types";
+import { budgetContext, type BudgetedContext } from "./budget";
+import { getCounter } from "./tokens";
+import type { FactRecord, FeaturePack, LoadedFeature, RouteMatch } from "./types";
 
 export type FinalizeStatus = "success" | "partial" | "blocked" | "failed";
 export type ValidationFailureStatus = "open" | "fixed" | "wontfix";
@@ -89,7 +91,7 @@ export async function searchContext({ repo, query }: { repo: string; query: stri
 }
 
 export async function loadContext({ repo, route }: { repo: string; route: string }): Promise<{
-  feature: FeaturePack | null;
+  feature: LoadedFeature | null;
   facts: FactRecord[];
   sources: string[];
   adrs: AdrRecord[];
@@ -97,20 +99,23 @@ export async function loadContext({ repo, route }: { repo: string; route: string
   const { features, adrs } = await readContextSnapshot(repo);
   const feature = features.find((item) => item.slug === route) ?? null;
   if (!feature) return { feature: null, facts: [], sources: [], adrs: [] };
+  // Carry facts once (top-level); `feature` is the pack metadata + prose without
+  // its facts array, so the load output does not duplicate the facts.
+  const { facts, ...slim } = feature;
   return {
-    feature,
-    facts: feature.facts,
+    feature: slim,
+    facts,
     sources: [
       rel(repo, join(feature.dir, "README.md")),
       rel(repo, join(feature.dir, "IDMAP.md")),
       rel(repo, join(feature.dir, "KG.adj")),
       rel(repo, join(feature.dir, "FACTS.jsonl")),
     ],
-    adrs: linkedAdrsForSources(feature.facts.flatMap((fact) => fact.src), adrs),
+    adrs: linkedAdrsForSources(facts.flatMap((fact) => fact.src), adrs),
   };
 }
 
-export async function resumeProject({ repo, task }: { repo: string; task: string }): Promise<{
+export async function resumeProject({ repo, task, budget }: { repo: string; task: string; budget?: number }): Promise<{
   task: string;
   context: RouteResult;
   execution_contract: {
@@ -120,13 +125,14 @@ export async function resumeProject({ repo, task }: { repo: string; task: string
     validation_commands: string[];
     contract_strength: "soft";
   };
+  context_preview?: BudgetedContext;
 }> {
   const context = await routeTask({ repo, task });
   const selected = context.routes.slice(0, 3).map((route) => route.slug);
   const firstAction = selected.length > 0
     ? `load ${selected.join(", ")} context packs`
     : "load docs/context/INDEX.md and identify the smallest relevant context pack";
-  return {
+  const base = {
     task,
     context,
     execution_contract: {
@@ -134,8 +140,23 @@ export async function resumeProject({ repo, task }: { repo: string; task: string
       first_action: firstAction,
       edit_scope: selected.map((slug) => `docs/context/features/${slug}/**`),
       validation_commands: ["barry-cache validate"],
-      contract_strength: "soft",
+      contract_strength: "soft" as const,
     },
+  };
+  if (budget === undefined || selected.length === 0) return base;
+  const loaded = await loadContext({ repo, route: selected[0]! });
+  if (loaded.feature === null) return base;
+  return {
+    ...base,
+    context_preview: budgetContext({
+      feature: loaded.feature,
+      facts: loaded.facts,
+      adrs: loaded.adrs,
+      sources: loaded.sources,
+      task,
+      budget,
+      counter: getCounter(),
+    }),
   };
 }
 
