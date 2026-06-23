@@ -4,9 +4,10 @@ Budget-aware lossless loading and the benchmark harness.
 
 ## Scope
 
-Opt-in token-budget loading for `load` and `resume` (`--budget N`, `--expand
-<ID|all>`), the pluggable token counter, and the `bench run`/`bench seed`
-harness that measures token savings and pack/fact recall.
+Default-on token-budget loading for `load` and `resume` (1500 tokens/pack;
+`--budget N` resizes, `--expand <id|all>` restores dropped detail / the full pack),
+the pluggable token counter, and the `bench run`/`bench seed` harness that measures
+token savings and pack/fact recall.
 
 ## Sources
 

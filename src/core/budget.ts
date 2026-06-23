@@ -19,20 +19,15 @@ export interface BudgetedAdr {
   summary: string;
 }
 
-export interface DroppedItem {
-  id: string;
-  kind: string;
-  tokens: number;
-}
-
 export interface BudgetReport {
   budget: number;
+  // Tokens of the entire emitted BudgetedContext (core + facts + ADRs + sources +
+  // this report), so it reflects what print() actually outputs — not just content.
   used: number;
   baseline_tokens: number;
   saved_pct: number;
   overflow: number;
-  included: string[];
-  dropped: DroppedItem[];
+  dropped: string[];
   expand_hint: string;
 }
 
@@ -67,16 +62,18 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
     title: firstHeading(feature.readme) || feature.slug,
     summary: firstParagraph(feature.readme),
   };
-  let used = cost(core);
+  // `selected` is the running content tally that drives inclusion decisions. The
+  // reported `used` (below) is the cost of the whole emitted object.
+  let selected = cost(core) + cost(sources);
 
   const includedFacts: FactRecord[] = [];
-  const dropped: DroppedItem[] = [];
+  const dropped: string[] = [];
 
   // Forced (expanded) facts first — always included, even past budget.
   for (const f of facts) {
     if (expand.has(f.id)) {
       includedFacts.push(f);
-      used += cost(f);
+      selected += cost(f);
     }
   }
 
@@ -94,11 +91,11 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
 
   for (const f of ranked) {
     const c = cost(f);
-    if (used + c <= budget) {
+    if (selected + c <= budget) {
       includedFacts.push(f);
-      used += c;
+      selected += c;
     } else {
-      dropped.push({ id: f.id, kind: f.kind, tokens: c });
+      dropped.push(f.id);
     }
   }
 
@@ -108,38 +105,38 @@ export function budgetContext(input: BudgetInput): BudgetedContext {
     if (expand.has(adr.id)) {
       const full: BudgetedAdr = { id: adr.id, title: adr.title, summary: adr.content };
       adrViews.push(full);
-      used += cost(full);
+      selected += cost(full);
       continue;
     }
     const view: BudgetedAdr = { id: adr.id, title: adr.title, summary: firstParagraph(adr.content) };
     const c = cost(view);
-    if (used + c <= budget) {
+    if (selected + c <= budget) {
       adrViews.push(view);
-      used += c;
+      selected += c;
     } else {
-      dropped.push({ id: adr.id, kind: "adr", tokens: c });
+      dropped.push(adr.id);
     }
   }
 
   // Baseline mirrors the exact (deduplicated) raw `load` output shape.
   const baseline = cost({ feature, facts, sources, adrs });
 
-  return {
-    feature: core,
-    facts: includedFacts,
-    adrs: adrViews,
-    sources,
-    budget: {
-      budget,
-      used,
-      baseline_tokens: baseline,
-      saved_pct: baseline > 0 ? round4(1 - used / baseline) : 0,
-      overflow: Math.max(0, used - budget),
-      included: includedFacts.map((f) => f.id),
-      dropped,
-      expand_hint: `barry-cache load --route ${feature.slug} --budget ${budget} --expand <ID> (or --expand all for the full pack)`,
-    },
+  const report: BudgetReport = {
+    budget,
+    used: 0,
+    baseline_tokens: baseline,
+    saved_pct: 0,
+    overflow: 0,
+    dropped,
+    expand_hint: `barry-cache load --route ${feature.slug} --budget ${budget} --expand <ID> (or --expand all for the full pack)`,
   };
+  const result: BudgetedContext = { feature: core, facts: includedFacts, adrs: adrViews, sources, budget: report };
+  // `used` = the true cost of everything emitted (including sources and this report).
+  const used = cost(result);
+  report.used = used;
+  report.overflow = Math.max(0, used - budget);
+  report.saved_pct = baseline > 0 ? round4(1 - used / baseline) : 0;
+  return result;
 }
 
 function confidenceWeight(fact: FactRecord): number {

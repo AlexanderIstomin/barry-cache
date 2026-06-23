@@ -83,7 +83,7 @@ export async function runBenchmark({ repo, budget, counter = getCounter() }: { r
       baseline += budgeted.budget.baseline_tokens;
       loaded += budgeted.budget.used;
       overflow += budgeted.budget.overflow;
-      for (const id of budgeted.budget.included) includedFactIds.add(id);
+      for (const fact of budgeted.facts) includedFactIds.add(fact.id);
     }
 
     const expectedPacks = task.expect_packs;

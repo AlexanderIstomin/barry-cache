@@ -109,7 +109,10 @@ a `TokenCounter`, it returns a `BudgetedPack` (what to render + what was dropped
 - Unknown `--expand` ID → warn and ignore (non-fatal).
 
 **Output:** works for text and `--json`. JSON gains a `budget` block:
-`{ budget, used, baseline_tokens, included: [...ids], dropped: [{id, kind, tokens}], expand_hint }`.
+`{ budget, used, baseline_tokens, saved_pct, overflow, dropped: [...ids], expand_hint }`
+— `used` is the cost of the **entire** emitted object (content + sources + this
+report), and `dropped` is a compact list of ids (the included ids are already on the
+returned `facts`). (See Amendment.)
 
 **Lossless invariant (asserted by tests):** every dropped ID is present on disk and
 retrievable via `--expand`. Budgeting never mutates `docs/context/`.
