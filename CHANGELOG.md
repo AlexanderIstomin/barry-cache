@@ -1,14 +1,20 @@
 # Changelog
 
+## 2026-06-25
+
+### Shared KB
+- barry-cache kb contribute posts each queued outbox lesson to cq POST /api/v1/knowledge as a propose request (domains<-tags, insight summary/detail/action, provenance plus applies_when/avoid_when prose appended to detail, created_by=validator id, and a structured barry:provenance extension with harvested/tool/evidence_class/observations metadata), gated on share-enabled, with --dry-run; cq propose carries no signature or evidence and Barry sends nothing signed (no local signing — see ADR-0014)
+
+
 ## 2026-06-23
 
 ### Context Loading
 - bench run measures tokens saved and pack/fact recall over docs/context/benchmarks fixtures
 - loadContext carries facts once at the top level instead of duplicating them under feature, shrinking raw load output about 43% on Barry's own context
-- load and resume select context within a token budget defaulting to 1500 per pack (DEFAULT_LOAD_BUDGET) using lossless relevance-ranked facts; --budget overrides and --expand all returns the full pack
+- load and resume select context within a token budget defaulting to 2000 per pack (DEFAULT_LOAD_BUDGET) and trimmed so the full emitted output fits; --budget overrides and --expand all returns the full pack
 
 ### Init Bootstrap
-- Generated Barry agent instructions explain that load and resume return a budgeted slice by default (~1500 tokens/pack) and tell agents to restore dropped facts with --expand <id> or --expand all
+- Generated Barry agent instructions explain that load and resume return a budgeted slice by default (~2000 tokens/pack) and tell agents to restore dropped facts with --expand <id> or --expand all
 
 
 ## 2026-06-20
@@ -18,7 +24,6 @@
 
 ### Shared KB
 - barry-cache kb search --source cq queries a configured cq endpoint via GET /api/v1/knowledge through a versioned adapter (CQ_SCHEMA_VERSION), sending each required domain filter (--domains or shared_kb.cq.domains) as a repeated domains query parameter, then mapping cq knowledge_units to Barry search items and scoring them by the free-text query locally; rejects a query with no searchable term (no word of 3+ characters) so it never silently returns the whole domain; gated on share-enabled mode and erroring clearly on a non-JSON response
-- barry-cache kb contribute posts each queued outbox lesson to cq POST /api/v1/knowledge as a propose request (domains<-tags, insight summary/detail/action, provenance plus applies_when/avoid_when prose appended to detail, created_by=validator id, no context.pattern because cq treats pattern as a short search axis), gated on share-enabled, with --dry-run; cq propose carries no signature or evidence and Barry sends nothing signed (no local signing — see ADR-0014)
 
 
 ## 2026-06-19

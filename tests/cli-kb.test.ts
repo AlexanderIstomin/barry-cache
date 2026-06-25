@@ -250,6 +250,14 @@ describe("kb contribute", () => {
         expect(received[0].insight.summary).toBe("Treat handoffs as claims until validated");
         expect(received[0].domains).toEqual(["agents", "validation"]);
         expect(received[0].insight.detail).toContain("Source: Barry Cache lesson");
+        expect(received[0].extensions).toEqual({
+          "barry:provenance": {
+            method: "harvested",
+            tool: "barry-cache",
+            evidence_class: "community-report",
+            observations: 1,
+          },
+        });
       } finally { server.stop(true); }
     });
   });
