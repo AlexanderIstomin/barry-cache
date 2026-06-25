@@ -1,6 +1,6 @@
 {
   "name": "barry-cache",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Barry Cache remembers your repo.",
   "repository": {
     "type": "git",

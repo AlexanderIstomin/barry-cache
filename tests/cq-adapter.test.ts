@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildProvenanceNote, cqContribute, cqSearch, cqUnitToSearchItem, lessonToCqProposal, parseKnowledgeUnitList } from "../src/core/cq-adapter";
+import { BARRY_PROVENANCE_EXTENSION_KEY, buildBarryProvenanceExtension, buildProvenanceNote, cqContribute, cqSearch, cqUnitToSearchItem, lessonToCqProposal, parseKnowledgeUnitList } from "../src/core/cq-adapter";
 import type { SharedKbLesson } from "../src/core/shared-kb";
 
 function sampleLesson(overrides: Partial<SharedKbLesson> = {}): SharedKbLesson {
@@ -156,12 +156,36 @@ describe("lessonToCqProposal", () => {
     expect(req.created_by).toBe("validator-xyz");
   });
 
+  test("adds structured Barry provenance under a namespaced cq extension", () => {
+    const req = lessonToCqProposal(sampleLesson(), { createdBy: "validator-xyz" });
+    expect(req.extensions).toEqual({
+      [BARRY_PROVENANCE_EXTENSION_KEY]: {
+        method: "harvested",
+        tool: "barry-cache",
+        evidence_class: "verified-fix",
+        observations: 2,
+      },
+    });
+  });
+
   test("throws when the lesson has no tags (cq requires >=1 domain)", () => {
     expect(() => lessonToCqProposal(sampleLesson({ tags: [] }))).toThrow("at least one domain");
   });
 
   test("provenance note includes evidence source and count", () => {
     expect(buildProvenanceNote(sampleLesson())).toContain("community_report, 2 observation(s), has follow-up fix");
+  });
+
+  test("Barry provenance extension stays privacy-safe and identity-free", () => {
+    const extension = buildBarryProvenanceExtension(sampleLesson({ evidence: { source_type: "community_report", count: 1 } }));
+    expect(extension).toEqual({
+      method: "harvested",
+      tool: "barry-cache",
+      evidence_class: "community-report",
+      observations: 1,
+    });
+    expect(JSON.stringify(extension)).not.toContain("lesson-20260619-abcd1234");
+    expect(JSON.stringify(extension)).not.toContain("validator-");
   });
 });
 

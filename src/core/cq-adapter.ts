@@ -2,10 +2,12 @@ import { scoreText, tokens } from "./shared-kb";
 import type { SharedKbConfidence, SharedKbKind, SharedKbLesson, SharedKbSearchItem, SharedKbSearchResult, SharedKbStatus } from "./shared-kb";
 
 export const CQ_SCHEMA_VERSION = "v1";
+export const BARRY_PROVENANCE_EXTENSION_KEY = "barry:provenance";
 
 // Field shapes mirror cq's published JSON Schema (schema/knowledge_unit.json):
 // required [id, domains, insight]; confidence/confirmations live under `evidence`;
-// languages/frameworks/pattern under `context`; there is no `kind`/`status`/`severity`.
+// languages/frameworks/pattern under `context`; implementation-specific extension
+// keys must use namespace:key format; there is no `kind`/`status`/`severity`.
 export interface CqInsight {
   summary?: string;
   detail?: string;
@@ -31,6 +33,15 @@ export interface CqFlag {
   duplicate_of?: string;
 }
 
+export type CqExtensions = Record<string, unknown>;
+
+export interface BarryProvenanceExtension {
+  method: "harvested";
+  tool: "barry-cache";
+  evidence_class: "community-report" | "verified-fix";
+  observations: number;
+}
+
 export interface CqKnowledgeUnit {
   id: string;
   version?: number;
@@ -41,6 +52,7 @@ export interface CqKnowledgeUnit {
   tier?: "local" | "private" | "public";
   created_by?: string;
   superseded_by?: string;
+  extensions?: CqExtensions;
   flags?: CqFlag[];
 }
 
@@ -153,12 +165,22 @@ export interface CqProposeRequest {
   domains: string[];
   insight: { summary: string; detail: string; action: string };
   context?: CqContext;
+  extensions?: CqExtensions;
   created_by?: string;
 }
 
 export function buildProvenanceNote(lesson: SharedKbLesson): string {
   const fix = lesson.evidence.has_follow_up_fix ? ", has follow-up fix" : "";
   return `Source: Barry Cache lesson ${lesson.id} (${lesson.evidence.source_type}, ${lesson.evidence.count} observation(s)${fix}).`;
+}
+
+export function buildBarryProvenanceExtension(lesson: SharedKbLesson): BarryProvenanceExtension {
+  return {
+    method: "harvested",
+    tool: "barry-cache",
+    evidence_class: lesson.evidence.has_follow_up_fix ? "verified-fix" : "community-report",
+    observations: lesson.evidence.count,
+  };
 }
 
 export function lessonToCqProposal(lesson: SharedKbLesson, opts: { createdBy?: string } = {}): CqProposeRequest {
@@ -173,6 +195,7 @@ export function lessonToCqProposal(lesson: SharedKbLesson, opts: { createdBy?: s
   const request: CqProposeRequest = {
     domains: lesson.tags,
     insight: { summary: lesson.title, detail, action: lesson.recommendation },
+    extensions: { [BARRY_PROVENANCE_EXTENSION_KEY]: buildBarryProvenanceExtension(lesson) },
   };
   if (opts.createdBy) request.created_by = opts.createdBy;
   return request;

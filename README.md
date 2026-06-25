@@ -103,7 +103,7 @@ Barry interoperates with Mozilla's [cq](https://github.com/mozilla-ai/cq) — an
 
 - **Consume:** `barry-cache kb search --source cq --query "…" --domains testing,ci` reads cq's commons (cq filters by `--domains`; the query then scores results locally).
 - **Author locally:** `barry-cache kb harvest` drafts a sanitized lesson candidate from a finalize/failure record; `barry-cache kb propose lesson …` queues it to a repo-local outbox.
-- **Contribute:** `barry-cache kb contribute` posts queued lessons to cq, annotated with their Barry provenance (`--dry-run` to preview).
+- **Contribute:** `barry-cache kb contribute` posts queued lessons to cq with Barry provenance in the human-readable detail and the `barry:provenance` extension (`--dry-run` to preview).
 
 Sharing is **off by default** and gated by mode:
 
