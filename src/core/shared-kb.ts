@@ -46,6 +46,8 @@ export interface SharedKbSearchResult {
   results: Array<SharedKbSearchItem & { score: number }>;
 }
 
+export { scoreText, tokens } from "./text";
+
 const requiredLessonFields: Array<keyof SharedKbLesson> = [
   "id",
   "kind",
@@ -87,18 +89,6 @@ export function validateSharedKbLesson(value: unknown): string[] {
   if (lesson.evidence !== undefined) errors.push(...validateEvidence(lesson.evidence));
   errors.push(...redactionErrors(lesson));
   return errors;
-}
-
-// Token scoring shared with the cq consume adapter.
-export function tokens(input: string): string[] {
-  return Array.from(new Set(input.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 3)));
-}
-
-export function scoreText(text: string, queryTokens: string[]): number {
-  // tokens() lowercases query tokens, so normalize the haystack too (matches context.ts
-  // scoring) — otherwise a non-lowercased caller would silently mis-score.
-  const haystack = text.toLowerCase();
-  return queryTokens.reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0);
 }
 
 function validateEvidence(value: unknown): string[] {

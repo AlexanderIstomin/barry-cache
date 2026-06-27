@@ -39,7 +39,7 @@ npx barry-cache init --dry-run        # preview writes without changing files
 Usually you don't run Barry yourself — `init` tells your agent to. Just ask normally ("Fix playback drift in the editor"), and the generated instructions have the agent run, before non-trivial work:
 
 ```bash
-barry-cache resume --task "fix playback drift in the editor"
+  barry-cache resume --task "fix playback drift in the editor"
 ```
 
 `resume` routes the task, picks the most relevant context packs, and returns a startup brief (first action, edit scope, validation commands). The agent then loads focused context and works:
@@ -49,6 +49,8 @@ barry-cache load --route editor-media-runtime
 ```
 
 When a package manager is detected, the generated instructions call the repo script instead of assuming `barry-cache` is on `PATH` (e.g. `bun run barry -- resume --task "…"`). If an agent skips the protocol, prompt it: *"Before editing, run Barry's resume for this task, load the returned routes, do the work, then validate."*
+
+Large repos can add `docs/context/workspaces.json` to map paths/modules to canonical context routes. Agents should pass known files with `--paths`; Barry then emits a `workspace_decision`. If the decision is ambiguous, the agent should ask or rerun with `--workspace <slug>` instead of guessing.
 
 At the end of a session the agent records what happened and promotes durable facts:
 
@@ -63,10 +65,11 @@ barry-cache finalize --status success --summary "Updated renderer clock context"
 | Command | What it does |
 |---|---|
 | `init [--agents …] [--yes] [--dry-run]` | Create/refresh the context structure and agent adapters. |
-| `resume --task "…" [--budget N]` | Startup brief for a task: routes + execution contract, plus a budgeted preview of the top route (default budget 2000 tokens/pack). |
-| `route --task "…"` | Score feature packs against a task; return best routes. |
-| `search --query "…"` | Search feature packs, facts, and ADRs. |
+| `resume --task "…" [--workspace slug] [--paths a,b] [--budget N]` | Startup brief for a task: routes + execution contract, optional workspace decision, plus a budgeted preview of the top route (default budget 2000 tokens/pack). |
+| `route --task "…" [--workspace slug] [--paths a,b]` | Score feature packs against a task; optional workspace hints boost mapped routes. |
+| `search --query "…" [--workspace slug] [--paths a,b]` | Search feature packs, facts, and ADRs; optional workspace hints boost mapped results. |
 | `load --route <name> [--budget N] [--expand <id\|all>]` | Load one feature pack as a lossless relevance-ranked slice within a token budget (default 2000), listing dropped ids to `--expand`. Use `--expand all` for the full pack. |
+| `workspace list` / `workspace infer --task "…" [--paths a,b]` | Inspect optional workspace registry entries and Barry's workspace selection decision. |
 | `bench run [--budget N]` | Run benchmark fixtures: report tokens saved vs. full-context baseline and pack/fact recall. |
 | `bench seed [--write]` | Draft benchmark fixtures from recorded handoffs (review, then `--write` to append). |
 | `finalize --status <s> --summary "…"` | Append an operational handoff (`success`/`partial`/`blocked`/`failed`). |

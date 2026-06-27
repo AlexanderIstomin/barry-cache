@@ -1,0 +1,5 @@
+workspace-registry maps paths-to-routes
+workspace-selection guides route-search-resume
+workspace-validation checks registry
+agent-instructions require ambiguity-handling
+context-cache tracks workspace-registry

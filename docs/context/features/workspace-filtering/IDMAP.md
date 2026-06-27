@@ -1,0 +1,19 @@
+# ID Map
+
+- `WORKSPACES`: `src/core/workspaces.ts`
+- `CONTEXT`: `src/core/context.ts`
+- `VALIDATE`: `src/core/validate.ts`
+- `CACHE`: `src/core/context-cache.ts`
+- `CLI`: `src/cli.ts`
+- `TEMPLATE`: `src/core/templates.ts`
+- `INIT`: `src/core/init.ts`
+- `WORKSPACE_SCHEMA`: `docs/context/schema/workspace.schema.json`
+- `README`: `README.md`
+- `AGENT`: `AGENTS.md`
+- `WORKSPACES_TEST`: `tests/workspaces.test.ts`
+- `CONTEXT_WORKSPACES_TEST`: `tests/context-workspaces.test.ts`
+- `WORKSPACE_VALIDATE_TEST`: `tests/workspace-validate.test.ts`
+- `CLI_WORKSPACES_TEST`: `tests/cli-workspaces.test.ts`
+- `CACHE_TEST`: `tests/context-cache.test.ts`
+- `INIT_TEST`: `tests/init.test.ts`
+- `WORKSPACE_FILTERING_ADR`: `docs/context/adrs/ADR-0017-add-optional-workspace-scoped-context-filtering.md`

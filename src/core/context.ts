@@ -7,6 +7,17 @@ import { rel, repoPath } from "./fs";
 import { budgetContext, type BudgetedContext } from "./budget";
 import { getCounter } from "./tokens";
 import type { FactRecord, FeaturePack, LoadedFeature, RouteMatch } from "./types";
+import { scoreText, tokens } from "./text";
+import {
+  readWorkspaceConfig,
+  selectWorkspace,
+  workspaceEditScopes,
+  workspaceRouteBoost,
+  workspaceRouteScope,
+  workspaceSelectionOptions,
+  type WorkspaceConfig,
+  type WorkspaceDecision,
+} from "./workspaces";
 
 export type FinalizeStatus = "success" | "partial" | "blocked" | "failed";
 export type ValidationFailureStatus = "open" | "fixed" | "wontfix";
@@ -14,10 +25,12 @@ export type ValidationFailureStatus = "open" | "fixed" | "wontfix";
 export interface RouteResult {
   task: string;
   routes: RouteMatch[];
+  workspace_decision?: WorkspaceDecision;
 }
 
 export interface SearchResult {
   query: string;
+  workspace_decision?: WorkspaceDecision;
   results: Array<{
     type: "fact" | "feature" | "adr";
     id: string;
@@ -28,18 +41,37 @@ export interface SearchResult {
   }>;
 }
 
-export async function routeTask({ repo, task }: { repo: string; task: string }): Promise<RouteResult> {
-  const { features, adrs } = await readContextSnapshot(repo);
-  const taskTokens = tokens(task);
-  const routes = features
-    .map((feature) => scoreFeature(feature, taskTokens, adrs))
-    .filter((route) => route.score > 0)
-    .sort((a, b) => b.score - a.score || a.slug.localeCompare(b.slug));
-  return { task, routes };
+export interface WorkspaceRequest {
+  workspace?: string;
+  paths?: string[];
 }
 
-export async function searchContext({ repo, query }: { repo: string; query: string }): Promise<SearchResult> {
+interface WorkspaceContextRequest extends WorkspaceRequest {
+  workspaceConfig?: WorkspaceConfig;
+}
+
+export async function routeTask({ repo, task, workspace, paths = [], workspaceConfig: providedWorkspaceConfig }: { repo: string; task: string } & WorkspaceContextRequest): Promise<RouteResult> {
   const { features, adrs } = await readContextSnapshot(repo);
+  const workspaceConfig = providedWorkspaceConfig ?? await readWorkspaceConfig(repo);
+  const workspaceDecision = shouldSelectWorkspace(workspaceConfig, workspace, paths)
+    ? selectWorkspace(workspaceConfig, workspaceSelectionOptions(task, paths, workspace))
+    : undefined;
+  const routeScope = workspaceRouteScope(workspaceConfig, workspaceDecision);
+  const taskTokens = tokens(task);
+  const routes = features
+    .map((feature) => applyWorkspaceRouteBoost(scoreFeature(feature, taskTokens, adrs), routeScope, workspaceDecision))
+    .filter((route) => route.score > 0)
+    .sort((a, b) => b.score - a.score || a.slug.localeCompare(b.slug));
+  return withWorkspaceDecision({ task, routes }, workspaceDecision);
+}
+
+export async function searchContext({ repo, query, workspace, paths = [] }: { repo: string; query: string } & WorkspaceRequest): Promise<SearchResult> {
+  const { features, adrs } = await readContextSnapshot(repo);
+  const workspaceConfig = await readWorkspaceConfig(repo);
+  const workspaceDecision = shouldSelectWorkspace(workspaceConfig, workspace, paths)
+    ? selectWorkspace(workspaceConfig, workspaceSelectionOptions(query, paths, workspace))
+    : undefined;
+  const routeScope = workspaceRouteScope(workspaceConfig, workspaceDecision);
   const queryTokens = tokens(query);
   const results: SearchResult["results"] = [];
 
@@ -86,8 +118,12 @@ export async function searchContext({ repo, query }: { repo: string; query: stri
     }
   }
 
+  for (const result of results) {
+    result.score = applyWorkspaceResultBoost(result.route, result.score, routeScope);
+  }
+
   results.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-  return { query, results };
+  return withWorkspaceDecision({ query, results }, workspaceDecision);
 }
 
 export async function loadContext({ repo, route }: { repo: string; route: string }): Promise<{
@@ -115,9 +151,10 @@ export async function loadContext({ repo, route }: { repo: string; route: string
   };
 }
 
-export async function resumeProject({ repo, task, budget }: { repo: string; task: string; budget?: number }): Promise<{
+export async function resumeProject({ repo, task, budget, workspace, paths = [] }: { repo: string; task: string; budget?: number } & WorkspaceRequest): Promise<{
   task: string;
   context: RouteResult;
+  workspace_decision?: WorkspaceDecision;
   execution_contract: {
     task_goal: string;
     first_action: string;
@@ -127,27 +164,44 @@ export async function resumeProject({ repo, task, budget }: { repo: string; task
   };
   context_preview?: BudgetedContext;
 }> {
-  const context = await routeTask({ repo, task });
+  const workspaceConfig = await readWorkspaceConfig(repo);
+  const routeOptions: { repo: string; task: string } & WorkspaceContextRequest = { repo, task, paths, workspaceConfig };
+  if (workspace !== undefined) routeOptions.workspace = workspace;
+  const context = await routeTask(routeOptions);
+  const workspaceDecision = context.workspace_decision;
+  if (workspaceDecision?.status === "ambiguous") {
+    return withWorkspaceDecision({
+      task,
+      context,
+      execution_contract: {
+        task_goal: task,
+        first_action: `resolve workspace ambiguity (${(workspaceDecision.candidates ?? []).join(", ")}) — ${workspaceDecision.required_action}`,
+        edit_scope: [],
+        validation_commands: ["barry-cache validate"],
+        contract_strength: "soft" as const,
+      },
+    }, workspaceDecision);
+  }
   const selected = context.routes.slice(0, 3).map((route) => route.slug);
-  const firstAction = selected.length > 0
-    ? `load ${selected.join(", ")} context packs`
-    : "load docs/context/INDEX.md and identify the smallest relevant context pack";
+  const firstAction = resumeFirstAction(selected, workspaceDecision);
+  const editScope = resumeEditScope(selected, workspaceConfig, workspaceDecision);
   const base = {
     task,
     context,
     execution_contract: {
       task_goal: task,
       first_action: firstAction,
-      edit_scope: selected.map((slug) => `docs/context/features/${slug}/**`),
+      edit_scope: editScope,
       validation_commands: ["barry-cache validate"],
       contract_strength: "soft" as const,
     },
   };
-  if (budget === undefined || selected.length === 0) return base;
+  const resultBase = withWorkspaceDecision(base, workspaceDecision);
+  if (budget === undefined || selected.length === 0) return resultBase;
   const loaded = await loadContext({ repo, route: selected[0]! });
-  if (loaded.feature === null) return base;
+  if (loaded.feature === null) return resultBase;
   return {
-    ...base,
+    ...resultBase,
     context_preview: budgetContext({
       feature: loaded.feature,
       facts: loaded.facts,
@@ -248,13 +302,52 @@ function scoreFeature(feature: FeaturePack, taskTokens: string[], adrs: AdrRecor
   };
 }
 
-function scoreText(text: string, queryTokens: string[]): number {
-  const haystack = text.toLowerCase();
-  return queryTokens.reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0);
+function shouldSelectWorkspace(config: WorkspaceConfig, workspace: string | undefined, paths: string[]): boolean {
+  return config.enabled || workspace !== undefined || paths.length > 0;
 }
 
-function tokens(input: string): string[] {
-  return Array.from(new Set(input.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 3)));
+function applyWorkspaceRouteBoost(route: RouteMatch, scope: ReturnType<typeof workspaceRouteScope>, decision: WorkspaceDecision | undefined): RouteMatch {
+  if (decision?.status !== "selected" || !decision.workspace) return route;
+  const boost = workspaceRouteBoost(route.slug, scope);
+  if (boost.role === "primary") {
+    return {
+      ...route,
+      score: route.score + boost.score,
+      reason: route.score > 0 ? `${route.reason}; workspace ${decision.workspace}` : `workspace ${decision.workspace}`,
+    };
+  }
+  if (boost.role === "dependency") {
+    return {
+      ...route,
+      score: route.score + boost.score,
+      reason: route.score > 0 ? `${route.reason}; dependency of ${decision.workspace}` : `dependency of ${decision.workspace}`,
+    };
+  }
+  return route;
+}
+
+function applyWorkspaceResultBoost(route: string, score: number, scope: ReturnType<typeof workspaceRouteScope>): number {
+  return score + workspaceRouteBoost(route, scope).score;
+}
+
+function resumeFirstAction(selected: string[], decision: WorkspaceDecision | undefined): string {
+  if (selected.length === 0) return "load docs/context/INDEX.md and identify the smallest relevant context pack";
+  if (decision?.status === "selected" && decision.workspace) {
+    return `load ${decision.workspace} workspace context (${selected.join(", ")})`;
+  }
+  return `load ${selected.join(", ")} context packs`;
+}
+
+function resumeEditScope(selected: string[], config: WorkspaceConfig, decision: WorkspaceDecision | undefined): string[] {
+  return [
+    ...workspaceEditScopes(config, decision),
+    ...selected.map((slug) => `docs/context/features/${slug}/**`),
+  ];
+}
+
+function withWorkspaceDecision<T extends object>(value: T, decision: WorkspaceDecision | undefined): T {
+  if (decision === undefined) return value;
+  return { ...value, workspace_decision: decision };
 }
 
 function factToText(fact: FactRecord): string {

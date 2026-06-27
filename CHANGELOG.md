@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-27
+
+### Workspace Filtering
+- workspace selection uses precedence explicit --workspace first, then --paths path inference, then task text inference, then no workspace; selected workspace routes receive a route/search boost, dependency routes receive a smaller boost, and unrelated global matches remain visible
+- resume workspace ambiguity returns workspace_decision.status ambiguous with candidates and required_action instead of a context preview when the default require-when-ambiguous policy cannot choose a single workspace
+- barry-cache workspace provides list and infer subcommands, and route/search/resume accept --workspace and --paths workspace hints that surface the structured workspace_decision in JSON output
+- Generated Barry agent instructions tell agents to pass --paths when relevant files or directories are known, use Barry's selected workspace, and not guess when workspace_decision.status is ambiguous; agents should ask the user or rerun with --workspace <slug>
+- barry-cache validate checks optional workspace registry shape, duplicate slugs, duplicate aliases, unknown routes, unknown dependencies, self-dependencies, invalid selection mode, no-match workspace paths, and recursive wildcard path prefixes without false no-match warnings; context-cache manifests also watch workspaces.json and the workspace schema
+
+
 ## 2026-06-25
 
 ### Shared KB

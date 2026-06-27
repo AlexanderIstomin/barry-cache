@@ -2,7 +2,7 @@
 import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
 import { createFeaturePack, draftFact } from "./core/authoring";
 import { buildChangelog, writeChangelog, type WriteChangelogResult } from "./core/changelog";
-import { finalizeProject, loadContext, recordValidationFailure, resumeProject, routeTask, searchContext, type ValidationFailureStatus } from "./core/context";
+import { finalizeProject, loadContext, recordValidationFailure, resumeProject, routeTask, searchContext, type ValidationFailureStatus, type WorkspaceRequest } from "./core/context";
 import { budgetContext, DEFAULT_LOAD_BUDGET } from "./core/budget";
 import { getCounter } from "./core/tokens";
 import { runBenchmark, readBenchmarkTasks, seedBenchmarkTasks, writeSeededTasks, type BenchmarkReport } from "./core/benchmark";
@@ -10,14 +10,17 @@ import { importPulpcutKb } from "./core/import-pulpcut";
 import { initProject } from "./core/init";
 import { buildReviewModel } from "./core/review-model";
 import { startReviewServer } from "./core/review-server";
-import { sharedKbKinds, tokens, type SharedKbConfidence, type SharedKbSearchResult } from "./core/shared-kb";
+import { sharedKbKinds, type SharedKbConfidence, type SharedKbSearchResult } from "./core/shared-kb";
+import { tokens } from "./core/text";
 import { clearCqApiKey, formatSharedKbContributionMode, readCqApiKey, readSharedKbConfig, sharedKbContributionModes, toSharedKbContributionMode, writeCqApiKey, writeSharedKbContributionMode, writeSharedKbCqConfig, type SharedKbConfig, type SharedKbCqConfig } from "./core/shared-kb-config";
 import { cqContribute, cqSearch, lessonToCqProposal } from "./core/cq-adapter";
 import { buildLessonProposal, listOutboxLessons, removeOutboxLesson, writeProposalToOutbox } from "./core/shared-kb-proposal";
 import { loadOrCreateValidatorIdentity } from "./core/shared-kb-identity";
 import { buildHarvestCandidate, readContextHarvestSources, readLatestHarvestSources, type HarvestCandidate, type HarvestSource } from "./core/shared-kb-harvest";
+import { parseStatsSince, recordStatsEvent, summarizeStats, type StatsSummary } from "./core/stats";
 import type { AgentInstructionTarget, InitResult } from "./core/types";
 import { validateProject } from "./core/validate";
+import { readWorkspaceConfig, selectWorkspace, workspaceSelectionOptions, type WorkspaceConfig, type WorkspaceDecision } from "./core/workspaces";
 
 interface ParsedArgs {
   command: string;
@@ -82,12 +85,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         break;
       case "route": {
         const task = requiredString(parsed, "task", commandUsage("route"));
-        print(await routeTask({ repo, task }), json);
+        print(await routeTask({ repo, task, ...workspaceRequest(parsed, commandUsage("route")) }), json);
         break;
       }
       case "search": {
         const query = requiredString(parsed, "query", commandUsage("search"));
-        print(await searchContext({ repo, query }), json);
+        print(await searchContext({ repo, query, ...workspaceRequest(parsed, commandUsage("search")) }), json);
         break;
       }
       case "load": {
@@ -114,6 +117,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         if (budgeted.budget.unknown_expand.length > 0) {
           console.error(`warning: --expand id(s) not found in ${route}: ${budgeted.budget.unknown_expand.join(", ")}`);
         }
+        await recordStatsEventBestEffort({ repo, command: "load", routes: [route], budget: budgeted.budget });
         print(budgeted, json);
         break;
       }
@@ -121,7 +125,12 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
         const task = requiredString(parsed, "task", commandUsage("resume"));
         // Default-on: resume always attaches a budgeted preview of the top route (DEFAULT_LOAD_BUDGET); --budget only resizes it.
         const budget = optionalPositiveInt(parsed, "budget", commandUsage("resume")) ?? DEFAULT_LOAD_BUDGET;
-        print(await resumeProject({ repo, task, budget }), json);
+        const result = await resumeProject({ repo, task, budget, ...workspaceRequest(parsed, commandUsage("resume")) });
+        if (result.context_preview) {
+          await recordStatsEventBestEffort({ repo, command: "resume", routes: [result.context_preview.feature.slug], budget: result.context_preview.budget });
+        }
+        // No preview means no context pack was loaded, so there is no token-savings event to record.
+        print(result, json);
         break;
       }
       case "finalize": {
@@ -214,6 +223,14 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
           await server.close();
           process.exit(0);
         });
+        break;
+      }
+      case "stats": {
+        await handleStatsCommand(parsed, repo, json);
+        break;
+      }
+      case "workspace": {
+        await handleWorkspaceCommand(parsed, repo, json);
         break;
       }
       case "bench": {
@@ -320,6 +337,14 @@ function optionalList(parsed: ParsedArgs, key: string, usageValue?: string): str
   return value.split(",").map((item: string) => item.trim()).filter(Boolean);
 }
 
+function workspaceRequest(parsed: ParsedArgs, usageValue?: string): WorkspaceRequest {
+  const workspace = optionalString(parsed, "workspace", usageValue);
+  const paths = optionalList(parsed, "paths", usageValue);
+  const request: WorkspaceRequest = { paths };
+  if (workspace !== undefined) request.workspace = workspace;
+  return request;
+}
+
 function parseAgentTargets(value: string | boolean | undefined): AgentInstructionTarget[] | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new CliArgumentError("--agents requires a comma-separated list", { usage: commandUsage("init"), options: { agents: agentTargets } });
@@ -388,6 +413,49 @@ async function handleBenchCommand(parsed: ParsedArgs, repo: string, json: boolea
   });
 }
 
+async function handleStatsCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === undefined || action === "summary") {
+    const usage = commandUsage("stats");
+    const sinceValue = optionalString(parsed, "since", usage);
+    let since: Date | undefined;
+    try {
+      since = parseStatsSince(sinceValue);
+    } catch (error) {
+      throw new CliArgumentError(errorMessage(error), { usage });
+    }
+    const summary = await summarizeStats({ repo, since });
+    print(summary, json, formatStatsSummary(summary));
+    return;
+  }
+  throw new CliArgumentError(action ? `Unknown stats action: ${action}` : "Missing stats action", {
+    usage: commandUsage("stats"),
+  });
+}
+
+async function handleWorkspaceCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
+  const action = parsed.positionals[0];
+  if (action === "list") {
+    const config = await readWorkspaceConfig(repo);
+    print(config, json, formatWorkspaceList(config));
+    return;
+  }
+  if (action === "infer") {
+    const task = optionalString(parsed, "task", commandUsage("workspace infer")) ?? "";
+    const config = await readWorkspaceConfig(repo);
+    const decision = selectWorkspace(config, workspaceSelectionFromCli(parsed, task, commandUsage("workspace infer")));
+    print({ decision, workspaces: config.workspaces }, json, formatWorkspaceDecision(decision));
+    return;
+  }
+  throw new CliArgumentError(action ? `Unknown workspace action: ${action}` : "Missing workspace action", {
+    usage: commandUsage("workspace"),
+  });
+}
+
+function workspaceSelectionFromCli(parsed: ParsedArgs, task: string, usageValue?: string): Parameters<typeof selectWorkspace>[1] {
+  return workspaceSelectionOptions(task, optionalList(parsed, "paths", usageValue), optionalString(parsed, "workspace", usageValue));
+}
+
 async function handleBenchSeedCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
   const { candidates, skipped } = await seedBenchmarkTasks({ repo });
   const write = parsed.flags.get("write") === true;
@@ -426,8 +494,64 @@ function formatBenchReport(report: BenchmarkReport): string {
   ].join("\n");
 }
 
+async function recordStatsEventBestEffort(options: Parameters<typeof recordStatsEvent>[0]): Promise<void> {
+  try {
+    await recordStatsEvent(options);
+  } catch (error) {
+    console.error(`warning: could not record stats event: ${errorMessage(error)}`);
+  }
+}
+
+function formatStatsSummary(summary: StatsSummary): string {
+  if (summary.event_count === 0) {
+    return "No Barry stats recorded yet. Run budgeted load or resume first.";
+  }
+  const lines = [
+    "Barry token savings (estimated, heuristic)",
+    `Events: ${summary.event_count} (load ${summary.load_count}, resume ${summary.resume_count})`,
+    `Estimated tokens saved: ${formatNumber(summary.saved_tokens)}`,
+    `Loaded tokens: ${formatNumber(summary.used_tokens)} vs ${formatNumber(summary.baseline_tokens)} full-context baseline`,
+    `Average saved: ${pct1(summary.saved_pct)}`,
+    `Dropped ids omitted across events: ${formatNumber(summary.dropped_count)}`,
+    `Over-budget events: ${formatNumber(summary.overflow_count)}`,
+  ];
+  if (summary.since) lines.push(`Since: ${summary.since}`);
+  return lines.join("\n");
+}
+
+function formatWorkspaceList(config: WorkspaceConfig): string {
+  if (!config.enabled) return "No workspace registry found at docs/context/workspaces.json.";
+  if (config.workspaces.length === 0) return "Workspace registry is present but has no workspaces.";
+  return config.workspaces.map((workspace) => {
+    const parts = [`${workspace.slug} — ${workspace.title}`];
+    if (workspace.paths.length > 0) parts.push(`paths: ${workspace.paths.join(", ")}`);
+    if (workspace.routes.length > 0) parts.push(`routes: ${workspace.routes.join(", ")}`);
+    if (workspace.depends_on.length > 0) parts.push(`depends on: ${workspace.depends_on.join(", ")}`);
+    return parts.join("\n  ");
+  }).join("\n");
+}
+
+function formatWorkspaceDecision(decision: WorkspaceDecision): string {
+  if (decision.status === "selected") {
+    return `Workspace: ${decision.workspace} (${decision.source})\n${decision.evidence.map((item) => `  ${item}`).join("\n")}`;
+  }
+  if (decision.status === "ambiguous") {
+    return `Workspace ambiguous: ${(decision.candidates ?? []).join(", ")}\n${decision.required_action}`;
+  }
+  if (decision.status === "disabled") return "Workspace filtering is disabled; docs/context/workspaces.json is absent.";
+  return decision.required_action ?? "No workspace matched task text or paths.";
+}
+
 function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
+}
+
+function pct1(value: number): string {
+  return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
+}
+
+function formatNumber(value: number): string {
+  return value.toLocaleString("en-US");
 }
 
 async function handleAdrCommand(parsed: ParsedArgs, repo: string, json: boolean): Promise<void> {
@@ -1007,10 +1131,15 @@ function commandUsage(command: string): string | undefined {
     adr: "barry-cache adr <new|list> [--json]",
     "adr new": 'barry-cache adr new --title "..." [--status active|superseded|deprecated] [--supersedes ADR-0001] [--tags context,agents] [--json]',
     "adr list": "barry-cache adr list [--json]",
-    route: 'barry-cache route --task "..." [--json]',
-    search: 'barry-cache search --query "..." [--json]',
+    route: 'barry-cache route --task "..." [--workspace slug] [--paths a,b] [--json]',
+    search: 'barry-cache search --query "..." [--workspace slug] [--paths a,b] [--json]',
     load: 'barry-cache load --route "..." [--task "..."] [--budget N (default 2000)] [--expand ID1,ID2|all] [--json]',
-    resume: 'barry-cache resume --task "..." [--budget N (default 2000)] [--json]',
+    resume: 'barry-cache resume --task "..." [--workspace slug] [--paths a,b] [--budget N (default 2000)] [--json]',
+    workspace: "barry-cache workspace <list|infer> [--json]",
+    "workspace list": "barry-cache workspace list [--json]",
+    "workspace infer": 'barry-cache workspace infer [--task "..."] [--workspace slug] [--paths a,b] [--json]',
+    stats: "barry-cache stats [summary] [--since 7d|30d|all|YYYY-MM-DD] [--json]",
+    "stats summary": "barry-cache stats [summary] [--since 7d|30d|all|YYYY-MM-DD] [--json]",
     finalize: 'barry-cache finalize --summary "..." [--status success|partial|blocked|failed] [--files a,b] [--tests a,b] [--fixes failure-id] [--json]',
     failure: "barry-cache failure <record> [--json]",
     "failure record": 'barry-cache failure record --summary "..." --expected "..." --actual "..." [--status open|fixed|wontfix] [--challenges id1,id2] [--files a,b] [--json]',
@@ -1047,10 +1176,13 @@ function usageText(message?: string): string {
 Usage:
   barry-cache init [--yes] [--dry-run] [--agents all|none|codex,cursor,copilot,claude,gemini,llms]
   barry-cache validate [--strict] [--json]
-  barry-cache route --task "..." [--json]
-  barry-cache search --query "..." [--json]
+  barry-cache route --task "..." [--workspace slug] [--paths a,b] [--json]
+  barry-cache search --query "..." [--workspace slug] [--paths a,b] [--json]
   barry-cache load --route "..." [--budget N] [--expand <id|all>] [--json]
-  barry-cache resume --task "..." [--budget N] [--json]
+  barry-cache resume --task "..." [--workspace slug] [--paths a,b] [--budget N] [--json]
+  barry-cache workspace list [--json]
+  barry-cache workspace infer [--task "..."] [--workspace slug] [--paths a,b] [--json]
+  barry-cache stats [summary] [--since 7d|30d|all|YYYY-MM-DD] [--json]
   barry-cache bench run [--budget N] [--json]
   barry-cache bench seed [--write] [--json]
   barry-cache finalize --summary "..." [--status success] [--json]

@@ -1,4 +1,5 @@
 import type { AdrRecord } from "./adr";
+import { round4 } from "./math";
 import type { TokenCounter } from "./tokens";
 import type { FactRecord, LoadedFeature } from "./types";
 
@@ -181,8 +182,4 @@ function cmpDateDesc(a: string, b: string): number {
   if (Number.isNaN(ta)) return 1;
   if (Number.isNaN(tb)) return -1;
   return tb - ta;
-}
-
-function round4(value: number): number {
-  return Math.round(value * 10000) / 10000;
 }
