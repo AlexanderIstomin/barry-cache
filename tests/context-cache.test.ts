@@ -78,4 +78,26 @@ describe("context cache", () => {
       expect(stale.routes).toHaveLength(0);
     });
   });
+
+  test("invalidates the parsed context snapshot when the workspace registry is added", async () => {
+    await withTempRepo(async (repo) => {
+      await initProject({ repo, yes: true });
+      await addRendererPack(repo);
+      await routeTask({ repo, task: "transport clock" });
+
+      const cachePath = join(repo, ".context-cache/context-index.json");
+      const cache = JSON.parse(await readFile(cachePath, "utf8"));
+      expect(cache.manifest.some((entry: { path: string }) => entry.path === "docs/context/workspaces.json")).toBe(true);
+      cache.features[0].readme += "\ncachephantom\n";
+      await writeFile(cachePath, `${JSON.stringify(cache, null, 2)}\n`);
+
+      await writeFile(join(repo, "docs/context/workspaces.json"), JSON.stringify({
+        version: 1,
+        workspaces: [],
+      }, null, 2));
+
+      const stale = await routeTask({ repo, task: "cachephantom" });
+      expect(stale.routes).toHaveLength(0);
+    });
+  });
 });

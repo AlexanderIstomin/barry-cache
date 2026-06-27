@@ -1,5 +1,5 @@
-import { scoreText, tokens } from "./shared-kb";
 import type { SharedKbConfidence, SharedKbKind, SharedKbLesson, SharedKbSearchItem, SharedKbSearchResult, SharedKbStatus } from "./shared-kb";
+import { scoreText, tokens } from "./text";
 
 export const CQ_SCHEMA_VERSION = "v1";
 export const BARRY_PROVENANCE_EXTENSION_KEY = "barry:provenance";

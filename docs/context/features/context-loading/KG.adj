@@ -1,3 +1,4 @@
 load uses budget
 budget uses tokens
 bench measures budget
+stats summarizes budget

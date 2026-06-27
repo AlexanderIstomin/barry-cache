@@ -119,6 +119,8 @@ async function buildManifest(repo: string, snapshot: ContextSnapshot): Promise<M
   const paths = new Map<string, "file" | "dir">();
   paths.set("docs/context/features", "dir");
   paths.set("docs/context/adrs", "dir");
+  paths.set("docs/context/workspaces.json", "file");
+  paths.set("docs/context/schema/workspace.schema.json", "file");
 
   for (const feature of snapshot.features) {
     const dir = rel(repo, feature.dir);

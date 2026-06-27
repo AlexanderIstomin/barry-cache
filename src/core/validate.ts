@@ -2,6 +2,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { adrMatchesSource, looksLikeAdrSource, readAdrCatalog } from "./adr";
 import { listDirs, rel, repoPath, readTextIfExists, exists } from "./fs";
 import type { CommandIssue, FactRecord, ValidationResult } from "./types";
+import { validateWorkspaceConfig } from "./workspaces";
 
 const requiredFiles = [
   "docs/context/INDEX.md",
@@ -24,6 +25,9 @@ export async function validateProject({ repo, now = new Date(), staleAfterDays =
 
   const featureRoot = repoPath(repo, "docs/context/features");
   const features = await listDirs(featureRoot);
+  const workspaceValidation = await validateWorkspaceConfig(repo, features);
+  errors.push(...workspaceValidation.errors);
+  warnings.push(...workspaceValidation.warnings);
   for (const slug of features) {
     const factsPath = join(featureRoot, slug, "FACTS.jsonl");
     if (!(await exists(factsPath))) {

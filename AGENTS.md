@@ -23,6 +23,15 @@ bun run barry -- load --route "<route>"
 
 `load` and `resume` return a relevance-ranked budgeted slice by default (~2000 tokens per pack), not the whole pack. Trust the slice — the result lists any `dropped` fact ids and an `expand_hint`. If a needed fact is missing, restore just that id with `--expand <id>`; use `--expand all` only when you genuinely need the full pack, or `--budget <N>` to resize.
 
+Workspace context is optional. When `docs/context/workspaces.json` exists and you know relevant files or directories, include them so Barry can choose the right workspace:
+
+```bash
+bun run barry -- resume --task "<task>" --paths "path-a,path-b"
+bun run barry -- workspace infer --task "<task>" --paths "path-a,path-b"
+```
+
+Use the workspace Barry selects. If Barry reports `workspace_decision.status: "ambiguous"`, do not guess — ask the user or rerun with `--workspace <slug>`.
+
 When context files change, run:
 
 ```bash

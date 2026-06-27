@@ -3,6 +3,7 @@ import { budgetContext } from "./budget";
 import { readContextSnapshot } from "./context-cache";
 import { loadContext, routeTask } from "./context";
 import { readTextIfExists, repoPath, writeText } from "./fs";
+import { round4 } from "./math";
 import { getCounter, type TokenCounter } from "./tokens";
 import { benchmarkTaskErrors, readIdmapTokens } from "./validate";
 
@@ -224,8 +225,4 @@ function normalizePath(path: string): string {
 function mean(values: number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function round4(value: number): number {
-  return Math.round(value * 10000) / 10000;
 }

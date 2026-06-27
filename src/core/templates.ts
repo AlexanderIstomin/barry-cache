@@ -46,6 +46,15 @@ ${commandPrefix} load --route "<route>"
 
 \`load\` and \`resume\` return a relevance-ranked budgeted slice by default (~2000 tokens per pack), not the whole pack. Trust the slice — the result lists any \`dropped\` fact ids and an \`expand_hint\`. If a needed fact is missing, restore just that id with \`--expand <id>\`; use \`--expand all\` only when you genuinely need the full pack, or \`--budget <N>\` to resize.
 
+Workspace context is optional. When \`docs/context/workspaces.json\` exists and you know relevant files or directories, include them so Barry can choose the right workspace:
+
+\`\`\`bash
+${commandPrefix} resume --task "<task>" --paths "path-a,path-b"
+${commandPrefix} workspace infer --task "<task>" --paths "path-a,path-b"
+\`\`\`
+
+Use the workspace Barry selects. If Barry reports \`workspace_decision.status: "ambiguous"\`, do not guess — ask the user or rerun with \`--workspace <slug>\`.
+
 When context files change, run:
 
 \`\`\`bash
@@ -123,6 +132,8 @@ barry-cache validate
 
 Feature context packs live in \`docs/context/features/*\`.
 
+Optional workspace routing lives in \`docs/context/workspaces.json\` when a repo wants path/module-scoped context hints.
+
 ## Decisions
 
 Architecture decision records live in \`docs/context/adrs/*\`.
@@ -186,6 +197,8 @@ Barry Cache keeps repo context source-backed, validated, and easy for agents to 
 This directory is the canonical project memory for Barry Cache. It keeps durable implementation context in Git so humans and agents can review the same source-backed facts instead of relying on private assistant memory or stale chat history.
 
 Barry separates three concerns: \`docs/context/\` is reviewed truth, \`.context-state/\` is operational session continuity, and \`.context-cache/\` is disposable retrieval data. Barry stores a parsed context index in \`.context-cache/context-index.json\` and reuses it while the source context manifest is unchanged. Use this structure to explain existing behavior, route tasks, validate facts, and resume agent work without loading the whole repo.
+
+Large projects can optionally add \`docs/context/workspaces.json\` to map paths/modules to context routes. Workspace routing is a hinting layer over the same canonical context, not a second memory store.
 `;
 
 export const adrReadmeMd = `# Architecture Decision Records
@@ -207,6 +220,7 @@ export const conceptOverviewMd = `# Project Context Model
 Barry Cache separates canonical context, operational state, and generated caches.
 
 - Canonical context lives in \`docs/context/\`.
+- Optional workspace routing lives in \`docs/context/workspaces.json\` and maps module paths to canonical feature packs.
 - Operational continuity lives in \`.context-state/\`.
 - Generated retrieval data lives in \`.context-cache/\`, including the disposable parsed context index.
 `;
@@ -252,6 +266,40 @@ export const routeSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Barry Cache route",
   "type": "object"
+};
+
+export const workspaceSchema = {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Barry Cache workspaces",
+  "type": "object",
+  "required": ["version", "workspaces"],
+  "properties": {
+    "version": { "const": 1 },
+    "selection": {
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["off", "hint", "require-when-ambiguous", "require"] }
+      },
+      "additionalProperties": false
+    },
+    "workspaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slug", "title", "paths", "routes"],
+        "properties": {
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "title": { "type": "string", "minLength": 1 },
+          "aliases": { "type": "array", "items": { "type": "string" } },
+          "paths": { "type": "array", "items": { "type": "string" } },
+          "routes": { "type": "array", "items": { "type": "string" } },
+          "depends_on": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
 };
 
 export const workStateSchema = {

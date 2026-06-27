@@ -25,7 +25,9 @@ describe("initProject", () => {
       await expect(stat(join(repo, "docs/context/adrs/README.md"))).resolves.toBeTruthy();
       await expect(stat(join(repo, "docs/context/schema/fact.schema.json"))).resolves.toBeTruthy();
       await expect(stat(join(repo, "docs/context/schema/adr.schema.json"))).resolves.toBeTruthy();
+      await expect(stat(join(repo, "docs/context/schema/workspace.schema.json"))).resolves.toBeTruthy();
       await expect(stat(join(repo, ".cursor/rules/barry-cache.mdc"))).resolves.toBeTruthy();
+      await expect(stat(join(repo, ".context-state/stats"))).resolves.toBeTruthy();
 
       const packageJson = JSON.parse(await readFile(join(repo, "package.json"), "utf8"));
       expect(packageJson.scripts.barry).toBe("barry-cache");
@@ -48,6 +50,9 @@ describe("initProject", () => {
       expect(agents).toContain("`fact draft` is an authoring guardrail, not broad canonical CRUD");
       expect(agents).toContain("Use ISO 8601 timestamps in fact `updated_at` values when saving new facts");
       expect(agents).toContain("Use collision-resistant fact IDs like `REV-20260526T160512Z-a8f3`; dense review UI may display them as `REV-a8f3`.");
+      expect(agents).toContain('resume --task "<task>" --paths "path-a,path-b"');
+      expect(agents).toContain('workspace_decision.status: "ambiguous"');
+      expect(agents).toContain("do not guess");
       expect(agents).toContain("run `bun install` first");
       expect(agents).not.toContain("barry-cache resume --task");
       expect(agents).toContain("Shared KB (cq) — opt-in");

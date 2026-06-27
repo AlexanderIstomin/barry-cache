@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { adrReadmeMd, adrSchema, agentInstructions, agentStub, applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workStateSchema } from "./templates";
+import { adrReadmeMd, adrSchema, agentInstructions, agentStub, applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workspaceSchema, workStateSchema } from "./templates";
 import { exists, readText, repoPath, writeIfChanged, writeText } from "./fs";
 import type { AgentInstructionTarget, InitResult, PackageManagerHint } from "./types";
 
@@ -41,6 +41,7 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     { path: "docs/context/schema/adr.schema.json", content: `${JSON.stringify(adrSchema, null, 2)}\n` },
     { path: "docs/context/schema/fact.schema.json", content: `${JSON.stringify(factSchema, null, 2)}\n` },
     { path: "docs/context/schema/route.schema.json", content: `${JSON.stringify(routeSchema, null, 2)}\n` },
+    { path: "docs/context/schema/workspace.schema.json", content: `${JSON.stringify(workspaceSchema, null, 2)}\n` },
     { path: "docs/context/schema/work-state.schema.json", content: `${JSON.stringify(workStateSchema, null, 2)}\n` },
     { path: "docs/context/schema/strategy.schema.json", content: `${JSON.stringify(strategySchema, null, 2)}\n` },
     { path: "docs/context/schema/failure.schema.json", content: `${JSON.stringify(failureSchema, null, 2)}\n` },
@@ -63,6 +64,7 @@ export async function initProject(options: InitOptions): Promise<InitResult> {
     await mkdir(join(repo, ".context-state/handoffs"), { recursive: true });
     await mkdir(join(repo, ".context-state/failures"), { recursive: true });
     await mkdir(join(repo, ".context-state/strategies"), { recursive: true });
+    await mkdir(join(repo, ".context-state/stats"), { recursive: true });
     await mkdir(join(repo, ".context-cache"), { recursive: true });
   }
 
