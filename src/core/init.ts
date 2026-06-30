@@ -87,9 +87,10 @@ async function patchAgentInstructions(
   packageManager: PackageManagerHint | undefined,
 ): Promise<void> {
   const selected = new Set(agents ?? allAgentTargets);
-  // AGENTS.md is the single canonical instruction file; every other instruction
-  // adapter is a thin stub that points back to it, so selecting any of them implies
-  // writing AGENTS.md.
+  // AGENTS.md is the canonical instruction file: it holds the full command set,
+  // memory policy, and decision-record rules. Only Codex auto-loads it, so every
+  // other adapter stub inlines the day-to-day retrieval loop and points back to
+  // AGENTS.md for the write-side policy. Selecting any adapter implies writing AGENTS.md.
   const instructionTargets: AgentInstructionTarget[] = ["codex", "cursor", "copilot", "claude", "gemini"];
   if (instructionTargets.some((target) => selected.has(target))) {
     await patchCanonicalAgentsFile(repo, dryRun, result, commandPrefix, packageManager);

@@ -98,12 +98,34 @@ export function agentStub(commandPrefix = "barry-cache"): string {
   return `
 ## Barry Cache
 
-This repo uses Barry Cache for shared, source-backed project context. The full command set and memory policy live in \`AGENTS.md\` at the repo root — read it before doing non-trivial work.
+Barry Cache remembers this repo through source-backed context files. Pull context continuously while you work — do not save it for the end of a task. The full command set, memory policy, and decision-record rules live in \`AGENTS.md\` at the repo root; read it before recording memory or handing off work.
 
-Start a task with:
+Start task context with:
 
 \`\`\`bash
 ${commandPrefix} resume --task "<task>"
+\`\`\`
+
+Use focused retrieval during work:
+
+\`\`\`bash
+${commandPrefix} route --task "<task>"
+${commandPrefix} search --query "<query>"
+${commandPrefix} load --route "<route>"
+\`\`\`
+
+\`load\` and \`resume\` return a relevance-ranked budgeted slice by default (~2000 tokens per pack), not the whole pack. Trust the slice — it lists any \`dropped\` fact ids and an \`expand_hint\`. Restore a missing fact with \`--expand <id>\`, or use \`--budget <N>\` to resize.
+
+When \`docs/context/workspaces.json\` exists and you know relevant files or directories, pass them so Barry can pick the right workspace:
+
+\`\`\`bash
+${commandPrefix} resume --task "<task>" --paths "path-a,path-b"
+\`\`\`
+
+When context files change, run:
+
+\`\`\`bash
+${commandPrefix} validate
 \`\`\`
 	`;
 }
