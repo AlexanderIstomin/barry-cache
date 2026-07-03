@@ -52,6 +52,9 @@ bun run barry -- failure record --summary "<what failed>" --expected "<expected 
 
 Memory policy:
 
+- Private vs. canonical memory: your agent's own private memory — the local store only you can read (for Claude Code, `MEMORY.md` and its files; other agents have their own) — is invisible to every other agent. Use it only for cross-session *personal* context — user preferences, how to work with this user, and external references.
+- Any decision, fact, or constraint another agent would need goes to Barry, never a private memory: an ADR, a `docs/context/features/*/FACTS.jsonl` fact, or a `finalize`/`failure` record. If you are about to write a `project`-type private memory, that is the signal to route it to Barry instead.
+- `feedback`-type guidance splits on who it serves: keep it private only when it is about working with *this user* personally (explanation depth, tone, review style). Guidance that states a rule every agent on this repo should follow (e.g. "always run `bun run barry -- validate` before `finalize`") is a policy, not a preference — route it to Barry as an ADR/`AGENTS.md` policy or a `decision` fact.
 - Finalize writes operational memory only.
 - Failure records write operational validation memory only and should challenge stale handoffs or facts instead of rewriting history.
 - Do not claim Barry canonical memory is updated unless `docs/context/` changed.

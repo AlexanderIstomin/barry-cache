@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { adrReadmeMd, adrSchema, agentInstructions, agentStub, applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workspaceSchema, workStateSchema } from "./templates";
+import { adrReadmeMd, adrSchema, agentInstructions, applyManagedBlock, conceptOverviewMd, factSchema, failureSchema, indexMd, logMd, maintenanceMd, readmeMd, routeSchema, strategySchema, workspaceSchema, workStateSchema } from "./templates";
 import { exists, readText, repoPath, writeIfChanged, writeText } from "./fs";
 import type { AgentInstructionTarget, InitResult, PackageManagerHint } from "./types";
 
@@ -87,10 +87,11 @@ async function patchAgentInstructions(
   packageManager: PackageManagerHint | undefined,
 ): Promise<void> {
   const selected = new Set(agents ?? allAgentTargets);
-  // AGENTS.md is the canonical instruction file: it holds the full command set,
-  // memory policy, and decision-record rules. Only Codex auto-loads it, so every
-  // other adapter stub inlines the day-to-day retrieval loop and points back to
-  // AGENTS.md for the write-side policy. Selecting any adapter implies writing AGENTS.md.
+  // AGENTS.md is the canonical instruction file that Codex auto-loads. Every other
+  // adapter carries the same full instructions — command set, memory policy, and
+  // decision-record rules — inside its managed block so no agent has to chase a
+  // pointer to AGENTS.md (thin stubs made agents skip the write-side policy).
+  // Selecting any adapter implies writing AGENTS.md.
   const instructionTargets: AgentInstructionTarget[] = ["codex", "cursor", "copilot", "claude", "gemini"];
   if (instructionTargets.some((target) => selected.has(target))) {
     await patchCanonicalAgentsFile(repo, dryRun, result, commandPrefix, packageManager);
@@ -103,7 +104,7 @@ async function patchAgentInstructions(
     }
     const path = repoPath(repo, file.path);
     const existing = (await exists(path)) ? await readText(path) : "";
-    const content = applyManagedBlock(existing, agentStub(commandPrefix));
+    const content = applyManagedBlock(existing, agentInstructions(commandPrefix, packageManager?.installCommand));
     record(result, await writeIfChanged(path, content, dryRun), file.path);
   }
 }

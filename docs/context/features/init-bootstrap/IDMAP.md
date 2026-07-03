@@ -15,6 +15,8 @@
 - `PKG`: package.json
 - `AGENT`: AGENTS.md
 - `AGENTS_MD_CANONICAL_ADR`: docs/context/adrs/ADR-0012-make-agents-md-the-canonical-agent-instruction-file-with-thin-stubs.md
+- `FULL_ADAPTER_INSTRUCTIONS_ADR`: docs/context/adrs/ADR-0018-carry-full-agent-instructions-in-every-adapter-instead-of-thin-stubs.md
+- `CLI_INIT_TEST`: tests/cli-init.test.ts
 - `VALIDATE`: src/core/validate.ts
 - `VALIDATE_TEST`: tests/validate.test.ts
 - `CLI_VALIDATE_TEST`: tests/cli-validate.test.ts
