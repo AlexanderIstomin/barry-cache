@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { existsSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
 import { createFeaturePack, draftFact } from "./core/authoring";
 import { buildChangelog, writeChangelog, type WriteChangelogResult } from "./core/changelog";
@@ -55,10 +57,10 @@ const factConfidences = ["low", "medium", "high"] as const;
 
 async function main(argv = process.argv.slice(2)): Promise<void> {
   const parsed = parseArgs(argv);
-  const repo = process.cwd();
   const json = parsed.flags.get("json") === true;
 
   try {
+    const repo = resolveRepo(parsed);
     switch (parsed.command) {
       case "init": {
         const agents = parseAgentTargets(parsed.flags.get("agents") ?? parsed.flags.get("agent"));
@@ -283,6 +285,15 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
   }
   return { command, positionals, flags };
+}
+
+function resolveRepo(parsed: ParsedArgs): string {
+  const value = parsed.flags.get("repo");
+  if (value === undefined) return process.cwd();
+  if (typeof value !== "string" || value.length === 0) throw new CliArgumentError("--repo requires a path");
+  const repo = resolve(value);
+  if (!existsSync(repo) || !statSync(repo).isDirectory()) throw new CliArgumentError(`--repo path is not a directory: ${repo}`);
+  return repo;
 }
 
 function requiredString(parsed: ParsedArgs, key: string, usageValue?: string, options?: Record<string, string[]>): string {

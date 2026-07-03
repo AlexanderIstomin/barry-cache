@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { writeFile } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { withTempRepo } from "./helpers";
@@ -52,6 +52,45 @@ describe("init cli", () => {
       expect(stdout).not.toContain("  CLAUDE.md");
       expect(stdout).not.toContain("  GEMINI.md");
       expect(stdout).not.toContain("  llms.txt");
+    });
+  });
+
+  test("--repo targets the given path, not the current working directory", async () => {
+    await withTempRepo(async (target) => {
+      await withTempRepo(async (cwd) => {
+        const proc = Bun.spawn([process.execPath, cliPath, "init", "--repo", target, "--agents", "codex", "--yes"], {
+          cwd,
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const stderr = await new Response(proc.stderr).text();
+        const code = await proc.exited;
+
+        expect(stderr).toBe("");
+        expect(code).toBe(0);
+        // Files land in the target repo...
+        await expect(stat(join(target, "AGENTS.md"))).resolves.toBeTruthy();
+        // ...and the process's own cwd is left untouched.
+        await expect(stat(join(cwd, "AGENTS.md"))).rejects.toThrow();
+      });
+    });
+  });
+
+  test("--repo with a nonexistent path fails loudly instead of falling back to cwd", async () => {
+    await withTempRepo(async (cwd) => {
+      const missing = join(cwd, "does-not-exist");
+      const proc = Bun.spawn([process.execPath, cliPath, "init", "--repo", missing, "--agents", "codex", "--yes"], {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stderr = await new Response(proc.stderr).text();
+      const code = await proc.exited;
+
+      expect(code).toBe(1);
+      expect(stderr).toContain("--repo path is not a directory");
+      // The real cwd must not have been scaffolded as a side effect.
+      await expect(stat(join(cwd, "AGENTS.md"))).rejects.toThrow();
     });
   });
 });

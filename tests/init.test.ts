@@ -63,8 +63,9 @@ describe("initProject", () => {
       expect(agents).toContain('Add or update a `kind: "decision"` fact');
       expect(agents).toContain("Do not create ADRs for routine bug fixes");
 
-      // Non-codex adapters inline the retrieval loop (only Codex auto-loads AGENTS.md)
-      // and point at AGENTS.md for the write-side memory policy.
+      // Every non-codex adapter now carries the full instructions inside its managed
+      // block — retrieval loop plus the write-side memory policy and decision records —
+      // so no agent has to chase a pointer to AGENTS.md (thin stubs made agents skip it).
       const cursor = await readFile(join(repo, ".cursor/rules/barry-cache.mdc"), "utf8");
       expect(cursor).toContain("Barry Cache");
       expect(cursor).toContain("bun run barry -- resume --task");
@@ -72,20 +73,19 @@ describe("initProject", () => {
       expect(cursor).toContain("bun run barry -- search --query");
       expect(cursor).toContain("bun run barry -- load --route");
       expect(cursor).toContain("Use focused retrieval during work");
-      expect(cursor).toContain("`AGENTS.md`");
       expect(cursor).toContain("<!-- barry-cache:start -->");
-      // The full write-side memory policy still lives only in AGENTS.md, not in every stub.
-      expect(cursor).not.toContain("There is no `fact` CLI command;");
-      expect(cursor).not.toContain("Do not create ADRs for routine bug fixes");
-      expect(cursor).not.toContain("Shared KB (cq)");
-      expect(cursor).not.toContain("Finalize writes operational memory only.");
+      // The full write-side memory policy now lives in every adapter, not only AGENTS.md.
+      expect(cursor).toContain("Do not create ADRs for routine bug fixes");
+      expect(cursor).toContain("Shared KB (cq)");
+      expect(cursor).toContain("Finalize writes operational memory only.");
+      expect(cursor).toContain("`feedback`-type guidance splits on who it serves");
 
-      // Copilot and Gemini share the same stub, so they get the retrieval loop too.
+      // Copilot and Gemini share the same full instructions.
       const copilot = await readFile(join(repo, ".github/copilot-instructions.md"), "utf8");
       expect(copilot).toContain("bun run barry -- route --task");
       expect(copilot).toContain("Use focused retrieval during work");
-      expect(copilot).toContain("`AGENTS.md`");
-      expect(copilot).not.toContain("Finalize writes operational memory only.");
+      expect(copilot).toContain("Finalize writes operational memory only.");
+      expect(copilot).toContain("Decision records:");
 
       // llms.txt is a discovery manifest, not an auto-loaded instruction file: links only, no commands.
       const llms = await readFile(join(repo, "llms.txt"), "utf8");
@@ -93,11 +93,12 @@ describe("initProject", () => {
       expect(llms).not.toContain("route --task");
 
       const claude = await readFile(join(repo, "CLAUDE.md"), "utf8");
-      expect(claude).toContain("`AGENTS.md`");
       expect(claude).toContain("bun run barry -- resume --task");
       expect(claude).toContain("bun run barry -- route --task");
       expect(claude).toContain("bun run barry -- search --query");
       expect(claude).toContain("bun run barry -- load --route");
+      expect(claude).toContain("Finalize writes operational memory only.");
+      expect(claude).toContain("`feedback`-type guidance splits on who it serves");
 
       const maintenance = await readFile(join(repo, "docs/context/MAINTENANCE.md"), "utf8");
       expect(maintenance).toContain("Save an agent session");
