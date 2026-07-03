@@ -63,8 +63,12 @@ describe("init cli", () => {
           stdout: "pipe",
           stderr: "pipe",
         });
-        const stderr = await new Response(proc.stderr).text();
-        const code = await proc.exited;
+        // Drain stdout too so a full pipe buffer can't block the child.
+        const [, stderr, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
 
         expect(stderr).toBe("");
         expect(code).toBe(0);
@@ -84,8 +88,12 @@ describe("init cli", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
-      const stderr = await new Response(proc.stderr).text();
-      const code = await proc.exited;
+      // Drain stdout too so a full pipe buffer can't block the child.
+      const [, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
 
       expect(code).toBe(1);
       expect(stderr).toContain("--repo path does not exist or is not accessible");
@@ -103,8 +111,12 @@ describe("init cli", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
-      const stderr = await new Response(proc.stderr).text();
-      const code = await proc.exited;
+      // Drain stdout too so a full pipe buffer can't block the child.
+      const [, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
 
       expect(code).toBe(1);
       expect(stderr).toContain("--repo path is not a directory");
