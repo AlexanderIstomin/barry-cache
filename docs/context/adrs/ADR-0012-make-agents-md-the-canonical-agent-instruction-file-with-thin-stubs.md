@@ -1,7 +1,8 @@
 ---
 id: ADR-0012
 title: Make AGENTS.md the canonical agent instruction file with thin stubs
-status: active
+status: superseded
+superseded_by: ADR-0018
 date: 2026-06-19
 supersedes: []
 tags: [agents, adapters, init, agents-md]

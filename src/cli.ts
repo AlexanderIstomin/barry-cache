@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { resolve } from "node:path";
 import { adrStatuses, createAdr, listAdrs, type AdrStatus } from "./core/adr";
 import { createFeaturePack, draftFact } from "./core/authoring";
@@ -292,7 +292,16 @@ function resolveRepo(parsed: ParsedArgs): string {
   if (value === undefined) return process.cwd();
   if (typeof value !== "string" || value.length === 0) throw new CliArgumentError("--repo requires a path");
   const repo = resolve(value);
-  if (!existsSync(repo) || !statSync(repo).isDirectory()) throw new CliArgumentError(`--repo path is not a directory: ${repo}`);
+  // Single stat (no existsSync precheck) so we avoid a TOCTTOU gap, and convert any
+  // fs error (ENOENT, EACCES, transient races) into a formatted CliArgumentError
+  // rather than letting a raw OS exception bypass main()'s friendly handler.
+  let isDirectory: boolean;
+  try {
+    isDirectory = statSync(repo).isDirectory();
+  } catch {
+    throw new CliArgumentError(`--repo path does not exist or is not accessible: ${repo}`);
+  }
+  if (!isDirectory) throw new CliArgumentError(`--repo path is not a directory: ${repo}`);
   return repo;
 }
 
@@ -1138,7 +1147,7 @@ function errorMessage(error: unknown): string {
 
 function commandUsage(command: string): string | undefined {
   const usages: Record<string, string> = {
-    init: "barry-cache init [--yes] [--dry-run] [--agents all|none|codex,cursor,copilot,claude,gemini,llms]",
+    init: "barry-cache init [--yes] [--dry-run] [--agents all|none|codex,cursor,copilot,claude,gemini,llms] [--repo path]",
     adr: "barry-cache adr <new|list> [--json]",
     "adr new": 'barry-cache adr new --title "..." [--status active|superseded|deprecated] [--supersedes ADR-0001] [--tags context,agents] [--json]',
     "adr list": "barry-cache adr list [--json]",
@@ -1185,7 +1194,7 @@ function usageText(message?: string): string {
   return `${message ? `${message}\n\n` : ""}Barry Cache remembers your repo.
 
 Usage:
-  barry-cache init [--yes] [--dry-run] [--agents all|none|codex,cursor,copilot,claude,gemini,llms]
+  barry-cache init [--yes] [--dry-run] [--agents all|none|codex,cursor,copilot,claude,gemini,llms] [--repo path]
   barry-cache validate [--strict] [--json]
   barry-cache route --task "..." [--workspace slug] [--paths a,b] [--json]
   barry-cache search --query "..." [--workspace slug] [--paths a,b] [--json]
@@ -1213,6 +1222,9 @@ Usage:
   barry-cache import --source pulpcut-kb --from /path/to/repo [--dry-run] [--json]
   barry-cache review [--port 8787] [--open]
   barry-cache review --json
+
+Global flags (any command):
+  --repo path   Target repository path (defaults to the current working directory).
 `;
 }
 

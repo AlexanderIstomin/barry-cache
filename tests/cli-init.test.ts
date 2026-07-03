@@ -88,9 +88,26 @@ describe("init cli", () => {
       const code = await proc.exited;
 
       expect(code).toBe(1);
-      expect(stderr).toContain("--repo path is not a directory");
+      expect(stderr).toContain("--repo path does not exist or is not accessible");
       // The real cwd must not have been scaffolded as a side effect.
       await expect(stat(join(cwd, "AGENTS.md"))).rejects.toThrow();
+    });
+  });
+
+  test("--repo pointing at a file (not a directory) fails loudly", async () => {
+    await withTempRepo(async (cwd) => {
+      const filePath = join(cwd, "a-file.txt");
+      await writeFile(filePath, "not a repo");
+      const proc = Bun.spawn([process.execPath, cliPath, "init", "--repo", filePath, "--agents", "codex", "--yes"], {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stderr = await new Response(proc.stderr).text();
+      const code = await proc.exited;
+
+      expect(code).toBe(1);
+      expect(stderr).toContain("--repo path is not a directory");
     });
   });
 });
